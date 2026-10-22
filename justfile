@@ -40,8 +40,7 @@ tail:
     tail -f {{flint_session_logs}}
 
 # run a session
-run repo host=flint_host port=flint_port:
-    {{just_executable()}} -f {{justfile()}} serve {{port}}
+run repo host=flint_host port=flint_port: (serve port)
     docker run --rm -it \
         -v "{{absolute_path(repo)}}":/work \
         -v pi-state:/home/node/.pi \
@@ -50,3 +49,16 @@ run repo host=flint_host port=flint_port:
         -e REC_API_KEY="$( rec auth token )" \
         -e REC_PI_CONFIG='{"baseUrl":"http://{{host}}:{{port}}/v1","contextWindow":{{context_window}},"maxTokens":{{max_tokens}}}' \
         {{image_name}} pi --extension /opt/rec/flint-pi.ts --provider rec --model flint
+
+# clone-and-work session as the GitHub App
+run-gh repo host=flint_host port=flint_port: (serve port)
+    docker run --rm -it \
+        -e GH_TOKEN="$( ./scripts/github-token.sh {{file_name(repo)}} )" \
+        -e REPO_SLUG={{repo}} \
+        -v pi-state:/home/node/.pi \
+        -e PI_CODING_AGENT_DIR=/home/node/.pi \
+        -e PI_SKIP_VERSION_CHECK=1 \
+        -e REC_API_KEY="$(rec auth token)" \
+        -e REC_PI_CONFIG='{"baseUrl":"http://{{host}}:{{port}}/v1","contextWindow":{{context_window}},"maxTokens":{{max_tokens}}}' \
+        {{image_name}}
+    

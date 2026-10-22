@@ -1,0 +1,42 @@
+services:
+  token:
+    build: ./token
+    environment:
+      APP_ID: ${APP_ID}
+      INSTALLATION_ID: ${INSTALLATION_ID}
+      REPO_NAME: ${REPO_NAME}
+    volumes:
+      - ~/.config/gh-apps/flint-agent.pem:/run/secrets/app.pem:ro
+      - gh-token:/tokens
+    command: >
+      bash -c 'while true; do
+        KEY=/run/secrets/app.pem mint-token.sh "$REPO_NAME" > /tokens/token.tmp &&
+        mv /tokens/token.tmp /tokens/token;
+        sleep 2700; done'
+    healthcheck:
+      test: ["CMD", "test", "-s", "/tokens/token"]
+      interval: 2s
+      retries: 30
+
+  agent:
+    image: flint-pi-agent
+    depends_on:
+      token: 
+        condition: service_healthy
+    environment:
+      REPO_SLUG: ${REPO_SLUG}
+      REC_API_KEY: ${REC_API_KEY}
+      REC_PI_CONFIG: ${REC_PI_CONFIG}
+      PI_CODING_AGENT_DIR: /home/node/.pi
+      PI_SKIP_VERSION_CHECK: "1"
+    volumes:
+      - gh-token:/tokens:ro
+      - pi-state:/home/node/.pi
+    stdin_open: true
+    tty: true
+    entrypoint: /opt/entrypoint.sh
+
+volumes:
+  gh-token:
+    driver_opts: { type: tmpfs, device: tmpfs, o: "uid=1000,mode=0750" }
+  pi-state:
