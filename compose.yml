@@ -36,6 +36,46 @@ services:
     stdin_open: true
     tty: true
 
+  agent-python:
+    image: ghcr.io/wrossmorrow/flint-pi-agent-python
+    build:
+      context: ./
+      target: python
+    depends_on:
+      token: 
+        condition: service_healthy
+    environment:
+      GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
+      REC_API_KEY: ${REC_API_KEY:?}
+      REC_PI_CONFIG: '{"baseUrl":"http://${FLINT_HOST}:${FLINT_PORT:-11500}/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-262144}}'
+      PI_CODING_AGENT_DIR: /home/node/.pi
+      PI_SKIP_VERSION_CHECK: "1"
+    volumes:
+      - gh-token:/tokens:ro
+      - pi-state:/home/node/.pi
+    stdin_open: true
+    tty: true
+
+  agent-golang:
+    image: ghcr.io/wrossmorrow/flint-pi-agent-golang
+    build:
+      context: ./
+      target: golang
+    depends_on:
+      token: 
+        condition: service_healthy
+    environment:
+      GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
+      REC_API_KEY: ${REC_API_KEY:?}
+      REC_PI_CONFIG: '{"baseUrl":"http://${FLINT_HOST}:${FLINT_PORT:-11500}/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-262144}}'
+      PI_CODING_AGENT_DIR: /home/node/.pi
+      PI_SKIP_VERSION_CHECK: "1"
+    volumes:
+      - gh-token:/tokens:ro
+      - pi-state:/home/node/.pi
+    stdin_open: true
+    tty: true
+
 secrets:
   gh_private_key:
     file: ${GITHUB_APP_PRIVATE_KEY}
