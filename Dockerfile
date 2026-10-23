@@ -94,14 +94,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG RUST_VERSION=1.77.0
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
+ENV PATH="/usr/local/cargo/bin:/usr/local/rustup/bin:${PATH}"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION} --profile minimal \
-    && ln -s /usr/local/rustup/bin/rustup /usr/local/bin/rustup \
-    && ln -s /usr/local/cargo/bin/cargo /usr/local/bin/cargo \
-    && ln -s /usr/local/cargo/bin/rustc /usr/local/bin/rustc \
-    && ln -s /usr/local/cargo/bin/rustdoc /usr/local/bin/rustdoc \
     && rustup component add rustfmt clippy \
-    && ln -s /usr/local/cargo/bin/cargo-fmt /usr/local/bin/cargo-fmt \
-    && ln -s /usr/local/cargo/bin/cargo-clippy /usr/local/bin/cargo-clippy \
     && chown -R node:node /usr/local/cargo /usr/local/rustup
 
 COPY --chmod=755 agents/rust.md /opt/agents/10-toolchain.md
