@@ -37,6 +37,8 @@ COPY --chmod=755 entrypoint.sh /opt/entrypoint.sh
 RUN mkdir -p /home/node/.pi /work \
     && chown node:node /home/node/.pi /work
 
+COPY --chmod=755 AGENTS.md /home/node/.pi
+
 USER node
 WORKDIR /work
 
