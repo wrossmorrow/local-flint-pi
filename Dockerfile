@@ -7,6 +7,13 @@ RUN apt-get update \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
+# just: task runner
+ARG JUST_VERSION=1.59.0
+RUN curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/just.tar.gz \
+    && tar -xzf /tmp/just.tar.gz -C /tmp \
+    && mv /tmp/just /usr/local/bin/just \
+    && rm -rf /tmp/just.tar.gz
+
 ARG GH_VERSION=2.62.0
 ARG TARGETARCH
 RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz" \
