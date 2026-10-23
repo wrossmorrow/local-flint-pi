@@ -2,7 +2,6 @@
 flint_port := "11500"
 flint_host := "host.docker.internal"
 image_base := "ghcr.io/wrossmorrow/flint-pi"
-image_name := image_base + "-agent"
 context_window := "262144"
 max_tokens := "262144"
 flint_session_logs := "~/.local/share/rec/serve.log"
@@ -14,15 +13,13 @@ default:
 
 # containerize for sessions, optionally targeting a toolchain stage (agent, python, golang)
 build toolchain="agent":
-    img="{{ image_name }}"
-    case {{ toolchain }} in python) img="ghcr.io/wrossmorrow/flint-pi-agent-python" ;; golang) img="ghcr.io/wrossmorrow/flint-pi-agent-golang" ;; esac
-    docker build --target {{ toolchain }} -t ${img} .
+    docker build --target {{ toolchain }} -t {{ image_base }}-{{ toolchain }} .
 
 # containerize all image variants (agent, python, golang)
 build-all:
-    docker build --target agent -t ghcr.io/wrossmorrow/flint-pi-agent .
-    docker build --target python -t ghcr.io/wrossmorrow/flint-pi-agent-python .
-    docker build --target golang -t ghcr.io/wrossmorrow/flint-pi-agent-golang .
+    just build agent
+    just build python
+    just build golang
 
 # serve flint in the background (no-op if already running)
 serve port=flint_port:
