@@ -4,7 +4,7 @@ FROM node:${NODE_TAG} AS agent
 ENV PAGER=cat GIT_PAGER=cat LESS=-FRX GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# add whatever toolchains your repos need: go, python, etc.
+# add whatever toolchains your repos need: go, rust, python, etc.
 RUN apt-get update \
     && apt-get install -y git ripgrep curl wget fd-find \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
@@ -41,7 +41,7 @@ COPY --chmod=755 entrypoint.sh /opt/entrypoint.sh
 RUN mkdir -p /home/node/.pi /opt/agents /work \
     && chown node:node /home/node/.pi /work
 
-COPY --chmod=755 agents/base.md /opt/agents/00-base.md
+COPY --chmod=644 agents/base.md /opt/agents/00-base.md
 
 USER node
 WORKDIR /work
@@ -62,7 +62,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ln -s /usr/local/uv/uv /usr/local/bin/uv \
     && ln -s /usr/local/uv/uvx /usr/local/bin/uvx
 
-COPY --chmod=755 agents/python.md /opt/agents/10-toolchain.md
+COPY --chmod=644 agents/python.md /opt/agents/10-toolchain.md
 
 USER node
 WORKDIR /work
@@ -80,12 +80,29 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
-COPY --chmod=755 agents/golang.md /opt/agents/10-toolchain.md
+COPY --chmod=644 agents/golang.md /opt/agents/10-toolchain.md
 
 USER node
 WORKDIR /work
 
 ENTRYPOINT ["/opt/entrypoint.sh"]
+
+# Rust toolchain: derives from the agent image and adds the Rust toolchain on top.
+FROM agent AS rust
+USER root
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG RUST_VERSION=1.99.1
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH="/usr/local/cargo/bin:/usr/local/rustup/bin:${PATH}"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION} --profile minimal \
+    && rustup component add rustfmt clippy \
+    && chown -R node:node /usr/local/cargo /usr/local/rustup
+
+COPY --chmod=644 agents/rust.md /opt/agents/10-toolchain.md
+
+USER node
+WORKDIR /work
 
 # Final stage: the full agent image (default build target for bare docker build)
 FROM agent AS final
