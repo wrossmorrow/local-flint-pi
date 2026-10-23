@@ -24,10 +24,13 @@ COPY --from=mikefarah/yq:4             /usr/bin/yq     /usr/local/bin/
 
 ARG GH_VERSION=2.62.0
 ARG TARGETARCH
-RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz" \
-    | tar -xz -C /tmp \
-    && mv /tmp/gh_${GH_VERSION}_linux_${TARGETARCH}/bin/gh /usr/local/bin/gh \
+RUN mkdir -p /usr/local/lib/gh \
+    && curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz" \
+        | tar -xz -C /tmp \
+    && mv /tmp/gh_${GH_VERSION}_linux_${TARGETARCH}/bin/gh /usr/local/lib/gh/gh \
     && rm -rf /tmp/gh_*
+
+COPY --chmod=755 github-app/gh-shim.sh /usr/local/bin/gh
 
 # TODO: pin a version if messy
 RUN npm install -g @earendil-works/pi-coding-agent
