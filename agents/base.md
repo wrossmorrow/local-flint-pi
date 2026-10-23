@@ -24,4 +24,5 @@ You are running in a sandboxed container with no access to the host.
 - If a push or command is rejected, stop and report it. Don't try workarounds.
 - Never modify `.github/workflows/` or other CI configuration. If a CI check fails
   because of its own rules (not your code), stop and report what the check requires.
-  
+
+
