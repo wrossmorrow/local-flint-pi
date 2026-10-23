@@ -45,8 +45,8 @@ RUN apt-get update \
 
 ENV UV_INSTALL_DIR=/usr/local/uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && ln -s /usr/local/uv/bin/uv /usr/local/bin/uv \
-    && ln -s /usr/local/uv/bin/uvx /usr/local/bin/uvx
+    && ln -s /usr/local/uv/uv /usr/local/bin/uv \
+    && ln -s /usr/local/uv/uvx /usr/local/bin/uvx
 
 USER node
 WORKDIR /work
