@@ -69,6 +69,8 @@ up repo *flags="": serve
     FLINT_CONTEXT_WINDOW={{context_window}} \
     FLINT_MAX_TOKENS={{max_tokens}} \
     REC_API_KEY=$( rec auth token ) \
+        AGENT_IMAGE=${AGENT_IMAGE:-ghcr.io/wrossmorrow/flint-pi-agent} \
+        AGENT_TARGET=${AGENT_TARGET:-agent} \
         docker compose run --rm agent {{flags}}
 
 down repo *flags="":
