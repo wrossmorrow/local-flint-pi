@@ -11,9 +11,9 @@ launch_timeout := "300"
 default:
     just --list
 
-# containerize for sessions
-build: 
-    docker build -t {{image_name}} .
+# containerize for sessions, optionally targeting a toolchain stage (agent, python, golang)
+build target="agent": 
+    docker build --target {{target}} -t {{image_name}} .
 
 # serve flint in the background (no-op if already running)
 serve port=flint_port:
