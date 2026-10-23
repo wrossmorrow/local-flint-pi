@@ -14,6 +14,13 @@ RUN curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/
     && mv /tmp/just /usr/local/bin/just \
     && rm -rf /tmp/just.tar.gz
 
+COPY --from=koalaman/shellcheck:stable /bin/shellcheck /usr/local/bin/
+COPY --from=hadolint/hadolint:latest   /bin/hadolint   /usr/local/bin/
+COPY --from=rhysd/actionlint:latest    /usr/local/bin/actionlint /usr/local/bin/
+COPY --from=mikefarah/yq:4             /usr/bin/yq     /usr/local/bin/
+
+ENV PAGER=cat GIT_PAGER=cat LESS=-FRX GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+
 ARG GH_VERSION=2.62.0
 ARG TARGETARCH
 RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz" \
