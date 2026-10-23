@@ -7,12 +7,30 @@ RUN apt-get update \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
+# Python toolchain (system interpreter + pip)
+RUN apt-get update \
+    && apt-get install -y python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv: standalone Python package & project manager
+ENV UV_INSTALL_DIR=/usr/local/uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && ln -s /usr/local/uv/bin/uv /usr/local/bin/uv \
+    && ln -s /usr/local/uv/bin/uvx /usr/local/bin/uvx
+
 ARG GH_VERSION=2.62.0
 ARG TARGETARCH
 RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz" \
     | tar -xz -C /tmp \
     && mv /tmp/gh_${GH_VERSION}_linux_${TARGETARCH}/bin/gh /usr/local/bin/gh \
     && rm -rf /tmp/gh_*
+
+# Go toolchain
+ARG GO_VERSION=1.23.4
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
+    | tar -xz -C /usr/local \
+    && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
 # TODO: pin a version if messy
 RUN npm install -g @earendil-works/pi-coding-agent
