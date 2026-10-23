@@ -41,7 +41,7 @@ COPY --chmod=755 entrypoint.sh /opt/entrypoint.sh
 RUN mkdir -p /home/node/.pi /opt/agents /work \
     && chown node:node /home/node/.pi /work
 
-COPY --chmod=755 agents/base.md /opt/agents/00-base.md
+COPY --chmod=644 agents/base.md /opt/agents/00-base.md
 
 USER node
 WORKDIR /work
@@ -62,7 +62,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ln -s /usr/local/uv/uv /usr/local/bin/uv \
     && ln -s /usr/local/uv/uvx /usr/local/bin/uvx
 
-COPY --chmod=755 agents/python.md /opt/agents/10-toolchain.md
+COPY --chmod=644 agents/python.md /opt/agents/10-toolchain.md
 
 USER node
 WORKDIR /work
@@ -80,7 +80,7 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
-COPY --chmod=755 agents/golang.md /opt/agents/10-toolchain.md
+COPY --chmod=644 agents/golang.md /opt/agents/10-toolchain.md
 
 USER node
 WORKDIR /work
