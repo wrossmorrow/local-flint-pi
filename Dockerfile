@@ -1,8 +1,10 @@
-FROM node:22-bookworm
+ARG NODE_TAG=22-bookworm
+FROM node:${NODE_TAG}
 
 # add whatever toolchains your repos need: go, python, etc.
 RUN apt-get update \
-    && apt-get install -y git ripgrep curl wget \
+    && apt-get install -y git ripgrep curl wget fd-find \
+    && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
 ARG GH_VERSION=2.62.0

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-set -a && source ./github-app/.env && set +a
+set -a && source ./.env && set +a
 
 GITHUB_APP_ID="${GITHUB_APP_ID:?}"
 GITHUB_APP_INSTALLATION_ID="${GITHUB_APP_INSTALLATION_ID:?}"

@@ -1,7 +1,7 @@
 
 flint_port := "11500"
 flint_host := "host.docker.internal"
-image_name := "flint-pi-agent"
+image_name := "ghcr.io/wrossmorrow/flint-pi-agent"
 context_window := "262144"
 max_tokens := "262144"
 flint_session_logs := "~/.local/share/rec/serve.log"
@@ -44,21 +44,25 @@ run repo host=flint_host port=flint_port: (serve port)
     docker run --rm -it \
         -v "{{absolute_path(repo)}}":/work \
         -v pi-state:/home/node/.pi \
+        -e GITHUB_REPO_NAME={{repo}} \
         -e PI_CODING_AGENT_DIR=/home/node/.pi \
         -e PI_SKIP_VERSION_CHECK=1 \
         -e REC_API_KEY="$( rec auth token )" \
         -e REC_PI_CONFIG='{"baseUrl":"http://{{host}}:{{port}}/v1","contextWindow":{{context_window}},"maxTokens":{{max_tokens}}}' \
         {{image_name}} pi --extension /opt/rec/flint-pi.ts --provider rec --model flint
-
-# clone-and-work session as the GitHub App
-run-gh repo host=flint_host port=flint_port: (serve port)
-    docker run --rm -it \
-        -e GH_TOKEN="$( ./scripts/github-token.sh {{file_name(repo)}} )" \
-        -e REPO_SLUG={{repo}} \
-        -v pi-state:/home/node/.pi \
-        -e PI_CODING_AGENT_DIR=/home/node/.pi \
-        -e PI_SKIP_VERSION_CHECK=1 \
-        -e REC_API_KEY="$(rec auth token)" \
-        -e REC_PI_CONFIG='{"baseUrl":"http://{{host}}:{{port}}/v1","contextWindow":{{context_window}},"maxTokens":{{max_tokens}}}' \
-        {{image_name}}
     
+up repo *flags="": serve
+    #!/usr/bin/env bash
+    set -euo pipefail
+    GITHUB_REPO_NAME={{repo}} \
+    FLINT_HOST={{flint_host}} \
+    FLINT_PORT={{flint_port}} \
+    FLINT_CONTEXT_WINDOW={{context_window}} \
+    FLINT_MAX_TOKENS={{max_tokens}} \
+    REC_API_KEY=$( rec auth token ) \
+        docker compose run --rm agent {{flags}}
+
+down repo *flags="":
+    GITHUB_REPO_NAME={{repo}} \
+    REC_API_KEY=0 \
+        docker compose down {{flags}}
