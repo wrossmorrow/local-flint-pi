@@ -13,6 +13,8 @@ You are running in a sandboxed container with no access to the host.
 - Don't claim design intent you weren't told. If you're unsure whether behavior is
   intended, describe what the code does and list it under "Open questions" in your
   summary and PR description. Never write comments asserting intent you inferred.
+- When removing a test or assertion, say why and where that behavior is covered now,
+  and move it if it’s not covered anywhere.
 
 # Git workflow
 
@@ -21,8 +23,8 @@ You are running in a sandboxed container with no access to the host.
   types: feat, fix, minor, config, infra, ci, doc, spelling, dependency.
   Use `!` for breaking changes (e.g. `feat!: ...`).
 - Once a PR is open, add new commits for changes; don't amend or force-push.
+- To update a PR branch with changes from main, merge main into it; don't rebase.
 - If a push or command is rejected, stop and report it. Don't try workarounds.
 - Never modify `.github/workflows/` or other CI configuration. If a CI check fails
   because of its own rules (not your code), stop and report what the check requires.
-
 
