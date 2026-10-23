@@ -14,9 +14,9 @@ default:
 
 # containerize for sessions, optionally targeting a toolchain stage (agent, python, golang)
 build toolchain="agent":
-    img="{{image_name}}"
-    case {{toolchain}} in python) img="ghcr.io/wrossmorrow/flint-pi-agent-python" ;; golang) img="ghcr.io/wrossmorrow/flint-pi-agent-golang" ;; esac
-    docker build --target {{toolchain}} -t ${img} .
+    img="{{ image_name }}"
+    case {{ toolchain }} in python) img="ghcr.io/wrossmorrow/flint-pi-agent-python" ;; golang) img="ghcr.io/wrossmorrow/flint-pi-agent-golang" ;; esac
+    docker build --target {{ toolchain }} -t ${img} .
 
 # containerize all image variants (agent, python, golang)
 build-all:
@@ -31,11 +31,11 @@ serve port=flint_port:
     if pgrep -f "rec serve" > /dev/null; then
         echo "rec already running"; exit 0
     fi
-    nohup rec serve --port {{port}} > {{flint_session_logs}} 2>&1 &
+    nohup rec serve --port {{ port }} > {{ flint_session_logs }} 2>&1 &
     pid=$!
-    for _ in $(seq 1 {{launch_timeout}}); do
-        grep -q "flint is ready" {{flint_session_logs}} && { echo "flint is ready"; exit 0; }
-        kill -0 "$pid" 2>/dev/null || { echo "rec serve exited:"; tail -20 {{flint_session_logs}}; exit 1; }
+    for _ in $(seq 1 {{ launch_timeout }}); do
+        grep -q "flint is ready" {{ flint_session_logs }} && { echo "flint is ready"; exit 0; }
+        kill -0 "$pid" 2>/dev/null || { echo "rec serve exited:"; tail -20 {{ flint_session_logs }}; exit 1; }
         sleep 1
     done
     echo "timed out waiting for rec"; exit 1
@@ -46,35 +46,35 @@ stop:
 
 # tail flint logs
 tail:
-    tail -f {{flint_session_logs}}
+    tail -f {{ flint_session_logs }}
 
 # run a session locally
 run repo toolchain="agent" host=flint_host port=flint_port: (serve port)
-    test -d "{{absolute_path(repo)}}" || { echo "no such directory: {{repo}}"; exit 1; }
+    test -d "{{ absolute_path(repo) }}" || { echo "no such directory: {{ repo }}"; exit 1; }
     docker run --rm -it \
-        -v "{{absolute_path(repo)}}":/work \
+        -v "{{ absolute_path(repo) }}":/work \
         -v pi-state:/home/node/.pi \
-        -e GITHUB_REPO_NAME={{repo}} \
+        -e GITHUB_REPO_NAME={{ repo }} \
         -e PI_CODING_AGENT_DIR=/home/node/.pi \
         -e PI_SKIP_VERSION_CHECK=1 \
         -e REC_API_KEY="$( rec auth token )" \
-        -e REC_PI_CONFIG='{"baseUrl":"http://{{host}}:{{port}}/v1","contextWindow":{{context_window}},"maxTokens":{{max_tokens}}}' \
-        {{image_base}}-{{toolchain}} pi --extension /opt/rec/flint-pi.ts --provider rec --model flint
-    
+        -e REC_PI_CONFIG='{"baseUrl":"http://{{ host }}:{{ port }}/v1","contextWindow":{{ context_window }},"maxTokens":{{ max_tokens }}}' \
+        {{ image_base }}-{{ toolchain }} pi --extension /opt/rec/flint-pi.ts --provider rec --model flint
+
 # bring up compose setup for a session
 up repo toolchain="agent" *flags="": serve
-    GITHUB_REPO_NAME={{repo}} \
-    FLINT_HOST={{flint_host}} \
-    FLINT_PORT={{flint_port}} \
-    FLINT_CONTEXT_WINDOW={{context_window}} \
-    FLINT_MAX_TOKENS={{max_tokens}} \
+    GITHUB_REPO_NAME={{ repo }} \
+    FLINT_HOST={{ flint_host }} \
+    FLINT_PORT={{ flint_port }} \
+    FLINT_CONTEXT_WINDOW={{ context_window }} \
+    FLINT_MAX_TOKENS={{ max_tokens }} \
     REC_API_KEY=$( rec auth token ) \
-    AGENT_IMAGE=${AGENT_IMAGE:{{image_base}}-{{toolchain}}} \
-    AGENT_TARGET=${AGENT_TARGET:-{{toolchain}}} \
-        docker compose run --rm agent {{flags}}
+    AGENT_IMAGE=${AGENT_IMAGE:{{ image_base }}-{{ toolchain }}} \
+    AGENT_TARGET=${AGENT_TARGET:-{{ toolchain }}} \
+        docker compose run --rm agent {{ flags }}
 
 # bring down compose setup (not flint, see just stop)
 down repo *flags="":
-    GITHUB_REPO_NAME={{repo}} \
+    GITHUB_REPO_NAME={{ repo }} \
     REC_API_KEY=0 \
-        docker compose down {{flags}}
+        docker compose down {{ flags }}
