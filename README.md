@@ -9,4 +9,4 @@ The agent base image now ships with Python (with [uv](https://docs.astral.sh/uv/
 - `python`: adds the Python + uv toolchain on top of the agent image
 - `golang`: adds the Go toolchain on top of the agent image
 
-Build a toolchain-specific image with `just build target=python`, or directly via `docker build --target golang -t <image> .`.
+Build a toolchain-specific image with `just build python`, or directly via `docker build --target golang -t <image> .`.

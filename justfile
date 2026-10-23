@@ -69,7 +69,7 @@ up repo toolchain="agent" *flags="": serve
     FLINT_CONTEXT_WINDOW={{ context_window }} \
     FLINT_MAX_TOKENS={{ max_tokens }} \
     REC_API_KEY=$( rec auth token ) \
-    AGENT_IMAGE=${AGENT_IMAGE:{{ image_base }}-{{ toolchain }}} \
+    AGENT_IMAGE=${AGENT_IMAGE:-{{ image_base }}-{{ toolchain }}} \
     AGENT_TARGET=${AGENT_TARGET:-{{ toolchain }}} \
         docker compose run --rm agent {{ flags }}
 

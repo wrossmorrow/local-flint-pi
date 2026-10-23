@@ -2,6 +2,7 @@ ARG NODE_TAG=22-bookworm
 FROM node:${NODE_TAG} AS agent
 
 ENV PAGER=cat GIT_PAGER=cat LESS=-FRX GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # add whatever toolchains your repos need: go, python, etc.
 RUN apt-get update \
@@ -48,6 +49,7 @@ ENTRYPOINT ["/opt/entrypoint.sh"]
 # manager uv on top.
 FROM agent AS python
 USER root
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
     && apt-get install -y python3 python3-pip python-is-python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -65,6 +67,7 @@ ENTRYPOINT ["/opt/entrypoint.sh"]
 # Go toolchain: derives from the agent image and adds the Go toolchain on top.
 FROM agent AS golang
 USER root
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG GO_VERSION=1.23.4
 ARG TARGETARCH
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
@@ -72,6 +75,13 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
+USER node
+WORKDIR /work
+
+ENTRYPOINT ["/opt/entrypoint.sh"]
+
+# Final stage: the full agent image (default build target for bare docker build)
+FROM agent AS final
 USER node
 WORKDIR /work
 
