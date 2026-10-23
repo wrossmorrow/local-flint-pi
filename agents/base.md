@@ -15,3 +15,4 @@ You are running in a sandboxed container with no access to the host.
   types: feat, fix, minor, config, infra, ci, doc, spelling, dependency.
   Use `!` for breaking changes (e.g. `feat!: ...`).
 - If a push or command is rejected, stop and report it. Don't try workarounds.
+
