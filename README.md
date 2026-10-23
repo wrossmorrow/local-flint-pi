@@ -3,4 +3,10 @@ Wrappers for running [recursive's flint](https://huggingface.co/RecursiveSI/flin
 
 The goal is largely to encapsulate work away from other files (particularly sensitive ones) as well as local copies of a repo. A GitHub app is used to get tokens for interacting with `git` with external permission controls. Flint runs locally, but the agent and its repo copy runs in a container.
 
-Various toolchains are likely missing for specific languages but that likely comes down to base image creation.
+The agent base image now ships with Python (with [uv](https://docs.astral.sh/uv/) as the package manager), the Go toolchain, and the [just](https://github.com/casey/just) task runner. Toolchain-specific images are built as derived stages of the same `Dockerfile`:
+
+- `agent` (default): the full agent image
+- `python`: adds the Python + uv toolchain on top of the agent image
+- `golang`: adds the Go toolchain on top of the agent image
+
+Build a toolchain-specific image with `just build python`, or directly via `docker build --target golang -t <image> .`.

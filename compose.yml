@@ -18,9 +18,10 @@ services:
       retries: 30
 
   agent:
-    image: ghcr.io/wrossmorrow/flint-pi-agent
+    image: ${AGENT_IMAGE:-ghcr.io/wrossmorrow/flint-pi-agent}
     build:
       context: ./
+      target: ${AGENT_TARGET:-agent}
     depends_on:
       token: 
         condition: service_healthy
