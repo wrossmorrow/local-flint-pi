@@ -15,7 +15,7 @@ default:
 build target="agent":
     img="{{image_name}}"
     case {{target}} in python) img="ghcr.io/wrossmorrow/flint-pi-agent-python" ;; golang) img="ghcr.io/wrossmorrow/flint-pi-agent-golang" ;; esac
-    docker build --target {{target}} -t {{img}} .
+    docker build --target {{target}} -t ${img} .
 
 # containerize all image variants (agent, python, golang)
 build-all:
