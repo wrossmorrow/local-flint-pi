@@ -12,8 +12,10 @@ default:
     just --list
 
 # containerize for sessions, optionally targeting a toolchain stage (agent, python, golang)
-build target="agent": 
-    docker build --target {{target}} -t {{image_name}} .
+build target="agent":
+    img="{{image_name}}"
+    case {{target}} in python) img="ghcr.io/wrossmorrow/flint-pi-agent-python" ;; golang) img="ghcr.io/wrossmorrow/flint-pi-agent-golang" ;; esac
+    docker build --target {{target}} -t {{img}} .
 
 # serve flint in the background (no-op if already running)
 serve port=flint_port:
