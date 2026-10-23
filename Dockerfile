@@ -91,7 +91,7 @@ ENTRYPOINT ["/opt/entrypoint.sh"]
 FROM agent AS rust
 USER root
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-ARG RUST_VERSION=1.77.0
+ARG RUST_VERSION=1.99.1
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
 ENV PATH="/usr/local/cargo/bin:/usr/local/rustup/bin:${PATH}"
@@ -99,12 +99,10 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
     && rustup component add rustfmt clippy \
     && chown -R node:node /usr/local/cargo /usr/local/rustup
 
-COPY --chmod=755 agents/rust.md /opt/agents/10-toolchain.md
+COPY --chmod=644 agents/rust.md /opt/agents/10-toolchain.md
 
 USER node
 WORKDIR /work
-
-ENTRYPOINT ["/opt/entrypoint.sh"]
 
 # Final stage: the full agent image (default build target for bare docker build)
 FROM agent AS final

@@ -34,6 +34,7 @@ services:
     volumes:
       - gh-token:/tokens:ro
       - pi-state:/home/node/.pi
+      - cargo-registry:/usr/local/cargo/registry
     stdin_open: true
     tty: true
 
@@ -48,3 +49,8 @@ volumes:
       device: tmpfs
       o: "uid=1000,mode=0750"
   pi-state:
+  cargo-registry:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=1000,mode=0750"

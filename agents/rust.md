@@ -5,7 +5,7 @@
   Dockerfile. Prefer a repo's `rust-toolchain.toml` when present; don't change the pinned
   version unless asked.
 - Before committing:
-  - `cargo fmt --check .` (run `cargo fmt .` to fix)
-  - `cargo clippy`
+  - `cargo fmt --check` (run `cargo fmt` to fix)
+  - `cargo clippy --all-targets -- -D warnings`
   - `cargo test`
 - No separate environment directory is needed; cargo manages its own target dir and caches.
