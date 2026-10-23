@@ -17,6 +17,12 @@ build target="agent":
     case {{target}} in python) img="ghcr.io/wrossmorrow/flint-pi-agent-python" ;; golang) img="ghcr.io/wrossmorrow/flint-pi-agent-golang" ;; esac
     docker build --target {{target}} -t {{img}} .
 
+# containerize all image variants (agent, python, golang)
+build-all:
+    docker build --target agent -t ghcr.io/wrossmorrow/flint-pi-agent .
+    docker build --target python -t ghcr.io/wrossmorrow/flint-pi-agent-python .
+    docker build --target golang -t ghcr.io/wrossmorrow/flint-pi-agent-golang .
+
 # serve flint in the background (no-op if already running)
 serve port=flint_port:
     #!/usr/bin/env bash
