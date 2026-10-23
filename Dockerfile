@@ -1,6 +1,8 @@
 ARG NODE_TAG=22-bookworm
 FROM node:${NODE_TAG} AS agent
 
+ENV PAGER=cat GIT_PAGER=cat LESS=-FRX GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+
 # add whatever toolchains your repos need: go, python, etc.
 RUN apt-get update \
     && apt-get install -y git ripgrep curl wget fd-find \
@@ -18,8 +20,6 @@ COPY --from=koalaman/shellcheck:stable /bin/shellcheck /usr/local/bin/
 COPY --from=hadolint/hadolint:latest   /bin/hadolint   /usr/local/bin/
 COPY --from=rhysd/actionlint:latest    /usr/local/bin/actionlint /usr/local/bin/
 COPY --from=mikefarah/yq:4             /usr/bin/yq     /usr/local/bin/
-
-ENV PAGER=cat GIT_PAGER=cat LESS=-FRX GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 
 ARG GH_VERSION=2.62.0
 ARG TARGETARCH
