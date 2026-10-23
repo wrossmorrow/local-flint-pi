@@ -41,6 +41,7 @@ tail:
 
 # run a session
 run repo host=flint_host port=flint_port: (serve port)
+    test -d "{{absolute_path(repo)}}" || { echo "no such directory: {{repo}}"; exit 1; }
     docker run --rm -it \
         -v "{{absolute_path(repo)}}":/work \
         -v pi-state:/home/node/.pi \
