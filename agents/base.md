@@ -7,6 +7,8 @@ You are running in a sandboxed container with no access to the host.
 - Tools: git, gh, jq, yq, just, rg, fd, shellcheck, hadolint, actionlint.
   Lint what you change: `shellcheck` for shell, `hadolint` for Dockerfiles,
   `actionlint` for workflows.
+- Don't modify AGENTS.md or any agent instruction files unless explicitly asked.
+  If you think an instruction should change, suggest it in your summary.
 
 # Design choices
 
