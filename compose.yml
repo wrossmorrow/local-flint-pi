@@ -10,7 +10,7 @@ services:
   
   model-relay:
     image: alpine/socat
-    command: tcp-listen:11500,fork,reuseaddr tcp-connect:host.docker.internal:11500
+    command: tcp-listen:11500,fork,reuseaddr tcp-connect:host.docker.internal:${FLINT_PORT:-11500}
     extra_hosts: 
       - "host.docker.internal:host-gateway"
     networks: 
@@ -35,7 +35,7 @@ services:
       test: ["CMD", "test", "-s", "/tokens/token"]
       interval: 2s
       retries: 30
-      
+
   agent:
     image: ${AGENT_IMAGE:-ghcr.io/wrossmorrow/flint-pi-agent}
     build:
@@ -44,15 +44,22 @@ services:
     depends_on:
       token: 
         condition: service_healthy
+      proxy:
+        condition: service_started
+      model-relay:
+        condition: service_started
     environment:
       HTTP_PROXY: http://proxy:3128
       HTTPS_PROXY: http://proxy:3128
       NO_PROXY: model-relay,localhost
+      http_proxy: http://proxy:3128
+      https_proxy: http://proxy:3128
+      no_proxy: model-relay,localhost
       GITHUB_APP_USER: ${GITHUB_APP_USER:?}
       GITHUB_APP_USER_ID: ${GITHUB_APP_USER_ID:?}
       GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
       REC_API_KEY: ${REC_API_KEY:?}
-      REC_PI_CONFIG: '{"baseUrl":"http://${FLINT_HOST}:${FLINT_PORT:-11500}/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-262144}}'
+      REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11500/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-262144}}'
       PI_CODING_AGENT_DIR: /home/node/.pi
       PI_SKIP_VERSION_CHECK: "1"
     volumes:
