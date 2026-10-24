@@ -1,5 +1,22 @@
 services:
+
+  proxy:
+    image: ubuntu/squid:latest
+    volumes:
+      - ./proxy/squid.conf:/etc/squid/squid.conf:ro
+    networks: 
+      - sandbox
+      - egress
   
+  model-relay:
+    image: alpine/socat
+    command: tcp-listen:11500,fork,reuseaddr tcp-connect:host.docker.internal:11500
+    extra_hosts: 
+      - "host.docker.internal:host-gateway"
+    networks: 
+      - sandbox
+      - egress
+
   # token generation, refreshing
   token:
     image: ghcr.io/wrossmorrow/flint-pi-token
@@ -12,11 +29,13 @@ services:
       - gh-token:/tokens
     secrets:
       - gh_private_key
+    networks:
+      - egress
     healthcheck:
       test: ["CMD", "test", "-s", "/tokens/token"]
       interval: 2s
       retries: 30
-
+      
   agent:
     image: ${AGENT_IMAGE:-ghcr.io/wrossmorrow/flint-pi-agent}
     build:
@@ -26,6 +45,9 @@ services:
       token: 
         condition: service_healthy
     environment:
+      HTTP_PROXY: http://proxy:3128
+      HTTPS_PROXY: http://proxy:3128
+      NO_PROXY: model-relay,localhost
       GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
       REC_API_KEY: ${REC_API_KEY:?}
       REC_PI_CONFIG: '{"baseUrl":"http://${FLINT_HOST}:${FLINT_PORT:-11500}/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-262144}}'
@@ -35,6 +57,8 @@ services:
       - gh-token:/tokens:ro
       - pi-state:/home/node/.pi
       - cargo-registry:/usr/local/cargo/registry
+    networks:
+      - sandbox
     stdin_open: true
     tty: true
 
@@ -50,3 +74,8 @@ volumes:
       o: "uid=1000,mode=0750"
   pi-state:
   cargo-registry:
+
+networks:
+  sandbox:
+    internal: true
+  egress: {}
