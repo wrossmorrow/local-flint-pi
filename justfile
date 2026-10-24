@@ -3,7 +3,7 @@ flint_port := "11500"
 flint_host := "host.docker.internal"
 image_base := "ghcr.io/wrossmorrow/flint-pi"
 context_window := "262144"
-max_tokens := "262144"
+max_tokens := "32768"
 flint_session_logs := "~/.local/share/rec/serve.log"
 launch_timeout := "300"
 
