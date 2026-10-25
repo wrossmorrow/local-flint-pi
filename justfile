@@ -46,19 +46,6 @@ stop:
 tail:
     tail -f {{ flint_session_logs }}
 
-# run a session locally
-run repo toolchain="agent" host=flint_host port=flint_port: (serve port)
-    test -d "{{ absolute_path(repo) }}" || { echo "no such directory: {{ repo }}"; exit 1; }
-    docker run --rm -it \
-        -v "{{ absolute_path(repo) }}":/work \
-        -v pi-state:/home/node/.pi \
-        -e GITHUB_REPO_NAME={{ repo }} \
-        -e PI_CODING_AGENT_DIR=/home/node/.pi \
-        -e PI_SKIP_VERSION_CHECK=1 \
-        -e REC_API_KEY="$( rec auth token )" \
-        -e REC_PI_CONFIG='{"baseUrl":"http://{{ host }}:{{ port }}/v1","contextWindow":{{ context_window }},"maxTokens":{{ max_tokens }}}' \
-        {{ image_base }}-{{ toolchain }} pi --extension /opt/rec/flint-pi.ts --provider rec --model flint
-
 # bring up compose setup for a session
 up repo toolchain="agent" *flags="": serve
     GITHUB_REPO_NAME={{ repo }} \

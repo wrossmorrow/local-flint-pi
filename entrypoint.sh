@@ -2,14 +2,16 @@
 
 set -euo pipefail
 
-# : "${GH_TOKEN:?}" "${REPO_SLUG:?}"   # e.g. wrossmorrow/simple-echo-server
-: "${GITHUB_REPO_NAME:?}"
+: "${GITHUB_REPO_NAME:?}" "${GITHUB_APP_USER:?}" "${GITHUB_APP_USER_ID:?}"
 
-# git reads the token from the env at use time; it's never written to .git/config
+DEFAULT_GIT_NAME="${GITHUB_APP_USER}[bot]"
+DEFAULT_GIT_EMAIL="${GITHUB_APP_USER_ID}+${GITHUB_APP_USER}[bot]@users.noreply.github.com"
+
+# git reads the token from the sidecar at use time; it's never written to .git/config
 git config --global credential.helper \
-  '!f() { echo username=x-access-token; echo "password=$(cat /tokens/token)"; }; f'
-git config --global user.name  "${GIT_NAME:-flint-agent[bot]}"
-git config --global user.email "${GIT_EMAIL:-flint-agent[bot]@users.noreply.github.com}"
+  '!f() { echo username=x-access-token; echo "password=$( cat /tokens/token )"; }; f'
+git config --global user.name  "${GIT_NAME:-${DEFAULT_GIT_NAME}}"
+git config --global user.email "${GIT_EMAIL:-${DEFAULT_GIT_EMAIL}}"
 
 git clone "https://github.com/${GITHUB_REPO_NAME}.git" /work/repo
 
