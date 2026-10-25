@@ -9,7 +9,7 @@ services:
     extra_hosts: 
       - "host.docker.internal:host-gateway"
     volumes:
-      - envoy.yaml:/etc/envoy/envoy.yaml
+      - ./envoy.yaml:/etc/envoy/envoy.yaml
     networks: 
       - sandbox
       - egress
@@ -39,6 +39,8 @@ services:
       context: ./
       target: ${AGENT_TARGET:-agent}
     depends_on:
+      model-relay:
+        condition: service_started
       token: 
         condition: service_healthy
     environment:
