@@ -1,5 +1,5 @@
 
-flint_port := "11500"
+flint_port := "11005"
 flint_host := "host.docker.internal"
 image_base := "ghcr.io/wrossmorrow/flint-pi"
 context_window := "262144"
