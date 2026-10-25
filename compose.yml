@@ -1,4 +1,18 @@
 services:
+
+  model-relay:
+    image: envoyproxy/envoy:${ENVOY_VERSION:-v1.35-latest}
+    command: envoy -c /etc/envoy/envoy.yaml --log-level ${ENVOY_LOG_LEVEL:-info}
+    ports:
+      - "11005:11005"
+      - "9901:9901"
+    extra_hosts: 
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - envoy.yaml:/etc/envoy/envoy.yaml
+    networks: 
+      - sandbox
+      - egress
   
   # token generation, refreshing
   token:
@@ -10,6 +24,8 @@ services:
       GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
     volumes:
       - gh-token:/tokens
+    networks: 
+      - egress
     secrets:
       - gh_private_key
     healthcheck:
@@ -26,17 +42,21 @@ services:
       token: 
         condition: service_healthy
     environment:
+      NO_PROXY: model-relay,localhost
+      no_proxy: model-relay,localhost
       GITHUB_APP_USER: ${GITHUB_APP_USER:?}
       GITHUB_APP_USER_ID: ${GITHUB_APP_USER_ID:?}
       GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
       REC_API_KEY: ${REC_API_KEY:?}
-      REC_PI_CONFIG: '{"baseUrl":"http://${FLINT_HOST}:${FLINT_PORT:-11500}/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-262144}}'
+      REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11500/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-32768}}'
       PI_CODING_AGENT_DIR: /home/node/.pi
       PI_SKIP_VERSION_CHECK: "1"
     volumes:
       - gh-token:/tokens:ro
       - pi-state:/home/node/.pi
       - cargo-registry:/usr/local/cargo/registry
+    networks: 
+      - sandbox
     stdin_open: true
     tty: true
 
@@ -52,3 +72,8 @@ volumes:
       o: "uid=1000,mode=0750"
   pi-state:
   cargo-registry:
+
+networks:
+  sandbox:
+    internal: true
+  egress: {}
