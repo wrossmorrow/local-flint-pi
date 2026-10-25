@@ -21,6 +21,18 @@ services:
       - sandbox
       - egress
   
+  # envoy external processor (gRPC) that watches model calls and will extract
+  # token counts from streamed JSON responses
+  extproc:
+    image: ghcr.io/wrossmorrow/flint-pi-extproc:latest
+    build:
+      context: ./extproc
+    networks:
+      - sandbox
+      - egress
+    ports:
+      - "127.0.0.1:9090:9090"
+
   # token generation, refreshing
   token:
     image: ghcr.io/wrossmorrow/flint-pi-token
@@ -49,6 +61,8 @@ services:
       proxy:
         condition: service_started
       model-relay:
+        condition: service_started
+      extproc:
         condition: service_started
       token: 
         condition: service_healthy
