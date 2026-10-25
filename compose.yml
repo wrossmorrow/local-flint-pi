@@ -1,11 +1,18 @@
 services:
 
+  proxy:
+    image: ubuntu/squid:latest
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+    networks:
+      - sandbox
+      - egress
+
   model-relay:
     image: envoyproxy/envoy:${ENVOY_VERSION:-v1.35-latest}
     command: envoy -c /etc/envoy/envoy.yaml --log-level ${ENVOY_LOG_LEVEL:-info}
     ports:
-      - "11005:11005"
-      - "9901:9901"
+      - "127.0.0.1:9999:9901"
     extra_hosts: 
       - "host.docker.internal:host-gateway"
     volumes:
@@ -39,13 +46,19 @@ services:
       context: ./
       target: ${AGENT_TARGET:-agent}
     depends_on:
+      proxy:
+        condition: service_started
       model-relay:
         condition: service_started
       token: 
         condition: service_healthy
     environment:
-      NO_PROXY: model-relay,localhost
-      no_proxy: model-relay,localhost
+      HTTP_PROXY: http://proxy:3128
+      HTTPS_PROXY: http://proxy:3128
+      NO_PROXY: model-relay,localhost,127.0.0.1,::1
+      http_proxy: http://proxy:3128
+      https_proxy: http://proxy:3128
+      no_proxy: model-relay,localhost,127.0.0.1,::1
       GITHUB_APP_USER: ${GITHUB_APP_USER:?}
       GITHUB_APP_USER_ID: ${GITHUB_APP_USER_ID:?}
       GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
