@@ -3,7 +3,7 @@ services:
   proxy:
     image: ubuntu/squid:latest
     volumes:
-      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ./proxy/agent.conf:/etc/squid/conf.d/agent.conf:ro
     networks:
       - sandbox
       - egress
@@ -63,7 +63,7 @@ services:
       GITHUB_APP_USER_ID: ${GITHUB_APP_USER_ID:?}
       GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
       REC_API_KEY: ${REC_API_KEY:?}
-      REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11500/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-32768}}'
+      REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11005/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-32768}}'
       PI_CODING_AGENT_DIR: /home/node/.pi
       PI_SKIP_VERSION_CHECK: "1"
     volumes:
