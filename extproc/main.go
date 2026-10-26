@@ -183,13 +183,16 @@ func (s *tokenCounterRequestProcessor) ErrorHandler(ctx *ep.RequestContext, phas
 
 func (s *tokenCounterRequestProcessor) Close(gracePeriodSeconds int32) error {
 	s.logger.Info("closing processor", slog.String("name", s.GetName()))
+	var closeErr error
 	if s.store != nil {
-		if err := s.uploadToMotherDuck(context.Background()); err != nil {
+		closeErr = s.store.Close()
+		// the duckdb cli cannot open a database file that another process holds
+		// a lock on, so the usage database is closed before the motherduck upload
+		if err := s.uploadToMotherDuck(context.Background(), s.store.DBPath()); err != nil {
 			s.logger.Warn("failed to upload token usage to motherduck", slog.String("error", err.Error()))
 		}
-		return s.store.Close()
 	}
-	return nil
+	return closeErr
 }
 
 func (s *tokenCounterRequestProcessor) Init(opts *ep.ProcessingOptions, nonFlagArgs []string) error {

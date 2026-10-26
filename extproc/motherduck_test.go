@@ -26,7 +26,7 @@ func TestUploadToMotherDuckSkippedWhenUnconfigured(t *testing.T) {
 	t.Parallel()
 
 	proc := newTestProcessor(t, "")
-	if err := proc.uploadToMotherDuck(context.Background()); err != nil {
+	if err := proc.uploadToMotherDuck(context.Background(), "/tmp/usage.duckdb"); err != nil {
 		t.Fatalf("uploadToMotherDuck() error = %v, want nil when no motherduck database is configured", err)
 	}
 }

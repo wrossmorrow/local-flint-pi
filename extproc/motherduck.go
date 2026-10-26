@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
+	"os/exec"
+	"strings"
 )
 
 // motherDuckDatabaseEnv is the environment variable that names the target
@@ -15,15 +18,17 @@ const motherDuckDatabaseEnv = "EXTPROC_MOTHERDUCK_DATABASE"
 // protocol.
 const motherDuckInstall = "INSTALL md;"
 
-// motherDuckLoad loads the MotherDuck extension into the session.
+// motherDuckLoad loads the MotherDuck extension into the current session.
 const motherDuckLoad = "LOAD md;"
 
-// motherDuckAttach attaches the MotherDuck instance using the `md:` protocol.
-const motherDuckAttach = "ATTACH 'md:';"
+// motherDuckAttach attaches the target MotherDuck database using the `md:`
+// protocol.
+const motherDuckAttach = "ATTACH 'md:%s' AS %s;"
 
-// motherDuckUploadDatabase creates or replaces a MotherDuck database holding
-// the contents of the currently attached database.
-const motherDuckUploadDatabase = "CREATE OR REPLACE DATABASE %s FROM CURRENT_DATABASE();"
+// motherDuckUploadTable creates or replaces the token usage table in the
+// target MotherDuck database from the token usage table in the local usage
+// database.
+const motherDuckUploadTable = "CREATE OR REPLACE TABLE %s.token_usage AS SELECT * FROM token_usage;"
 
 // MotherDuckDatabase returns the target MotherDuck database name for the usage
 // upload, or an empty string when the upload is disabled.
@@ -32,32 +37,33 @@ func MotherDuckDatabase() string {
 }
 
 // uploadToMotherDuck uploads the token usage accumulated in the local usage
-// database to MotherDuck over the `md:` protocol, using the configured target
-// MotherDuck database. It is a no-op when no target database is configured and
-// returns an error if the upload fails, so callers can log and continue shutdown.
-func (s *tokenCounterRequestProcessor) uploadToMotherDuck(ctx context.Context) error {
+// database to MotherDuck over the `md:` protocol, using the DuckDB CLI which
+// runs a DuckDB version supported by the MotherDuck extension. It is a no-op
+// when no target database is configured and returns an error if the upload
+// fails, so callers can log and continue shutdown. The local usage database
+// must not be held open by the caller while this runs, since the DuckDB CLI
+// cannot open a database file that another process holds a lock on.
+func (s *tokenCounterRequestProcessor) uploadToMotherDuck(ctx context.Context, dbPath string) error {
 	if s.mdDatabase == "" {
 		s.logger.Debug("no motherduck database configured, skipping usage upload")
 		return nil
 	}
-
-	conn, err := s.store.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to acquire usage database connection for motherduck upload: %w", err)
+	s.logger.Info("uploading token usage to motherduck",
+		slog.String("database", s.mdDatabase),
+		slog.String("db_path", dbPath),
+	)
+	statements := []string{
+		motherDuckInstall,
+		motherDuckLoad,
+		fmt.Sprintf(motherDuckAttach, s.mdDatabase, s.mdDatabase),
+		fmt.Sprintf(motherDuckUploadTable, s.mdDatabase),
 	}
-	defer conn.Close()
-
-	if _, err := conn.ExecContext(ctx, motherDuckInstall); err != nil {
-		return fmt.Errorf("failed to install the motherduck extension: %w", err)
-	}
-	if _, err := conn.ExecContext(ctx, motherDuckLoad); err != nil {
-		return fmt.Errorf("failed to load the motherduck extension: %w", err)
-	}
-	if _, err := conn.ExecContext(ctx, motherDuckAttach); err != nil {
-		return fmt.Errorf("failed to attach to motherduck via the md: protocol: %w", err)
-	}
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckUploadDatabase, s.mdDatabase)); err != nil {
-		return fmt.Errorf("failed to upload usage database to motherduck database %q: %w", s.mdDatabase, err)
+	for _, stmt := range statements {
+		cmd := exec.CommandContext(ctx, "duckdb", dbPath, "-c", stmt)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("duckdb %q failed: %w: %s", stmt, err, strings.TrimSpace(string(out)))
+		}
 	}
 	return nil
 }
