@@ -259,8 +259,6 @@ func main() {
 		log.Fatalf("Initialize the processor failed: %v.", err.Error())
 	}
 
-	ep.MustServe(sopts, proc, logger)
-
 	// simple HTTP server for ad-hoc querying of the usage database
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("/query", queryHandler(store))
@@ -273,4 +271,6 @@ func main() {
 			log.Printf("query http server error: %v", err)
 		}
 	}()
+
+	ep.MustServe(sopts, proc, logger)
 }
