@@ -11,9 +11,12 @@ import (
 // processor shuts down. When unset, the usage upload to MotherDuck is skipped.
 const motherDuckDatabaseEnv = "EXTPROC_MOTHERDUCK_DATABASE"
 
-// motherDuckInstallAndLoad installs and loads the MotherDuck extension used to
-// speak the `md:` protocol.
-const motherDuckInstallAndLoad = "INSTALL AND LOAD md;"
+// motherDuckInstall installs the MotherDuck extension used to speak the `md:`
+// protocol.
+const motherDuckInstall = "INSTALL md;"
+
+// motherDuckLoad loads the MotherDuck extension into the session.
+const motherDuckLoad = "LOAD md;"
 
 // motherDuckAttach attaches the MotherDuck instance using the `md:` protocol.
 const motherDuckAttach = "ATTACH 'md:';"
@@ -44,8 +47,11 @@ func (s *tokenCounterRequestProcessor) uploadToMotherDuck(ctx context.Context) e
 	}
 	defer conn.Close()
 
-	if _, err := conn.ExecContext(ctx, motherDuckInstallAndLoad); err != nil {
-		return fmt.Errorf("failed to install and load the motherduck extension: %w", err)
+	if _, err := conn.ExecContext(ctx, motherDuckInstall); err != nil {
+		return fmt.Errorf("failed to install the motherduck extension: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, motherDuckLoad); err != nil {
+		return fmt.Errorf("failed to load the motherduck extension: %w", err)
 	}
 	if _, err := conn.ExecContext(ctx, motherDuckAttach); err != nil {
 		return fmt.Errorf("failed to attach to motherduck via the md: protocol: %w", err)
