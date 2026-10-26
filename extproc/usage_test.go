@@ -65,3 +65,75 @@ func TestParseUsage(t *testing.T) {
 		})
 	}
 }
+
+func TestParseUsageFromSSE(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		body    string
+		want    *ResponseUsage
+		wantErr bool
+	}{
+		{
+			name: "sse data event with usage",
+			body: "data: " + `{"id": "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11", "object": "chat.completion", "model": "flint", "usage": {"prompt_tokens": 3, "completion_tokens": 8, "total_tokens": 11, "prompt_tokens_details": {"cached_tokens": 0}}}` + "\n\n",
+			want: &ResponseUsage{
+				ID: "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11",
+				Usage: Usage{
+					PromptTokens:        3,
+					CompletionTokens:    8,
+					TotalTokens:         11,
+					PromptTokensDetails: PromptTokensDetails{CachedTokens: 0},
+				},
+			},
+		},
+		{
+			name: "sse multiple data events, last carries usage",
+			body: "data: " + `{"id": "chatcmpl-aaa", "object": "chat.completion", "model": "flint"}` + "\n\n" +
+				"data: " + `{"id": "chatcmpl-bbb", "object": "chat.completion", "model": "flint", "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7, "prompt_tokens_details": {"cached_tokens": 1}}}` + "\n\n",
+			want: &ResponseUsage{
+				ID: "chatcmpl-bbb",
+				Usage: Usage{
+					PromptTokens:        5,
+					CompletionTokens:    2,
+					TotalTokens:         7,
+					PromptTokensDetails: PromptTokensDetails{CachedTokens: 1},
+				},
+			},
+		},
+		{
+			name:    "sse data event without usage",
+			body:    "data: " + `{"object": "chat.completion", "model": "flint"}` + "\n\n",
+			wantErr: true,
+		},
+		{
+			name:    "sse no data events",
+			body:    "\n\n",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := ParseUsageFromSSE(tt.body)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("ParseUsageFromSSE() expected error, got nil (usage=%v)", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseUsageFromSSE() unexpected error: %v", err)
+			}
+			if got.ID != tt.want.ID {
+				t.Fatalf("ParseUsageFromSSE() ID = %q, want %q", got.ID, tt.want.ID)
+			}
+			if got.Usage != tt.want.Usage {
+				t.Fatalf("ParseUsageFromSSE() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}

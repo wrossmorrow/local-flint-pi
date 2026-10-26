@@ -87,7 +87,7 @@ func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContex
 // response stream has ended, extracts the token usage, and logs it. Failures
 // to parse are logged and do not fail the stream.
 func (s *tokenCounterRequestProcessor) finalizeResponseUsage(ctx *ep.RequestContext, body string) error {
-	usage, err := parseResponseUsage([]byte(body))
+	usage, err := ParseUsageFromSSE(body)
 	if err != nil {
 		s.logger.Warn("failed to parse response body for token usage", slog.String("error", err.Error()))
 		return nil

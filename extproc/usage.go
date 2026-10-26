@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // PromptTokensDetails carries sub-token accounting reported by the model.
@@ -54,4 +55,53 @@ func ParseUsage(body []byte) (*Usage, error) {
 		return nil, err
 	}
 	return &r.Usage, nil
+}
+
+// ParseUsageFromSSE extracts token usage from a Server-Sent Events (SSE)
+// formatted response body. Data events carry JSON payloads prefixed with
+// "data:". The usage is taken from the last data event that carries usage.
+func ParseUsageFromSSE(body string) (*ResponseUsage, error) {
+	var last *ResponseUsage
+	for _, event := range sseEvents(body) {
+		data := strings.Join(event, "\n")
+		data = strings.TrimSpace(data)
+		if data == "" {
+			continue
+		}
+		r, err := parseResponseUsage([]byte(data))
+		if err != nil {
+			continue
+		}
+		last = r
+	}
+	if last == nil {
+		return nil, errors.New("no usage found in SSE response body")
+	}
+	return last, nil
+}
+
+// sseEvents splits an SSE body into events, each a list of data field values
+// (multiple data lines within one event are joined with a newline, per the SSE
+// spec).
+func sseEvents(body string) [][]string {
+	var events [][]string
+	var cur []string
+	flush := func() {
+		if len(cur) > 0 {
+			events = append(events, cur)
+		}
+		cur = nil
+	}
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			flush()
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			cur = append(cur, strings.TrimPrefix(line, "data:"))
+		}
+	}
+	flush()
+	return events
 }
