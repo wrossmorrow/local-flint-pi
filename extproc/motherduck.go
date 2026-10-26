@@ -26,10 +26,14 @@ const motherDuckLoad = "LOAD md;"
 // contain characters (such as hyphens) that are not valid bare identifiers.
 const motherDuckAttach = "ATTACH 'md:%s' AS \"%s\";"
 
-// motherDuckUploadTable creates or replaces the token usage table in the
-// target MotherDuck database from the token usage table in the local usage
-// database. The target database name is quoted for the same reason.
-const motherDuckUploadTable = "CREATE OR REPLACE TABLE \"%s\".token_usage AS SELECT * FROM token_usage;"
+// motherDuckCreateTable creates the token usage table in the target MotherDuck
+// database if it does not yet exist, with the same schema as the local usage
+// table but without any rows.
+const motherDuckCreateTable = "CREATE TABLE IF NOT EXISTS \"%s\".token_usage AS SELECT * FROM token_usage WHERE 1=0;"
+
+// motherDuckInsert inserts all rows of the local token usage table into the
+// target MotherDuck token usage table.
+const motherDuckInsert = "INSERT INTO \"%s\".token_usage SELECT * FROM token_usage;"
 
 // MotherDuckDatabase returns the target MotherDuck database name for the usage
 // upload, or an empty string when the upload is disabled.
@@ -57,7 +61,8 @@ func (s *tokenCounterRequestProcessor) uploadToMotherDuck(ctx context.Context, d
 		motherDuckInstall,
 		motherDuckLoad,
 		fmt.Sprintf(motherDuckAttach, s.mdDatabase, s.mdDatabase),
-		fmt.Sprintf(motherDuckUploadTable, s.mdDatabase),
+		fmt.Sprintf(motherDuckCreateTable, s.mdDatabase),
+		fmt.Sprintf(motherDuckInsert, s.mdDatabase),
 	}
 	for _, stmt := range statements {
 		cmd := exec.CommandContext(ctx, "duckdb", dbPath, "-c", stmt)
