@@ -245,7 +245,7 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	usageDBPath := os.Getenv("EXTOPROC_USAGE_DB")
+	usageDBPath := os.Getenv("EXTPROC_USAGE_DB")
 	if usageDBPath == "" {
 		usageDBPath = "/tmp/extproc-usage.duckdb"
 	}
