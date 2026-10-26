@@ -10,8 +10,8 @@ import (
 func TestUsageStoreRecordAndClose(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "usage.jsonl")
-	store, err := NewUsageStore(path)
+	dbPath := filepath.Join(t.TempDir(), "usage.duckdb")
+	store, err := NewUsageStore(dbPath)
 	if err != nil {
 		t.Fatalf("NewUsageStore() error = %v", err)
 	}
@@ -69,7 +69,7 @@ func TestUsageStoreRecordAndClose(t *testing.T) {
 func TestUsageStoreRecordNilUsage(t *testing.T) {
 	t.Parallel()
 
-	store, err := NewUsageStore(filepath.Join(t.TempDir(), "usage.jsonl"))
+	store, err := NewUsageStore(filepath.Join(t.TempDir(), "usage.duckdb"))
 	if err != nil {
 		t.Fatalf("NewUsageStore() error = %v", err)
 	}
@@ -83,7 +83,7 @@ func TestUsageStoreRecordNilUsage(t *testing.T) {
 func TestUsageStoreConcurrentRecords(t *testing.T) {
 	t.Parallel()
 
-	store, err := NewUsageStore(filepath.Join(t.TempDir(), "usage.jsonl"))
+	store, err := NewUsageStore(filepath.Join(t.TempDir(), "usage.duckdb"))
 	if err != nil {
 		t.Fatalf("NewUsageStore() error = %v", err)
 	}

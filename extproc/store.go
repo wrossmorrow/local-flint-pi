@@ -1,15 +1,16 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
+	"database/sql"
 	"errors"
-	"os"
-	"strings"
-	"sync"
 	"time"
+
+	_ "github.com/marcboeker/go-duckdb"
 )
 
-// UsageRecord is a timestamped token-usage observation written to the WAL.
+// UsageRecord is a timestamped token-usage observation as stored in the
+// tabular usage database.
 type UsageRecord struct {
 	Timestamp  time.Time       `json:"timestamp"`
 	ResponseID string          `json:"response_id,omitempty"`
@@ -28,84 +29,156 @@ type TokenUsage struct {
 	CachedTokens     int64 `json:"cached"`
 }
 
-// UsageStore appends token usage records to a write-ahead log (JSONL) file.
-// It is safe for concurrent use and holds the log file open for appends.
-type UsageStore struct {
-	mu   sync.Mutex
-	path string
-	file *os.File
+// tokenUsageRow mirrors a single row of the token_usage table as scanned out
+// of the database, in tabular column order.
+type tokenUsageRow struct {
+	Timestamp              time.Time
+	ResponseID             string
+	Status                 string
+	PromptTokens           int64
+	CompletionTokens       int64
+	TotalTokens            int64
+	CachedTokens           int64
+	RequestReceivedAt      time.Time
+	FirstResponseAt        time.Time
+	LastResponseAt         time.Time
+	ErrorAt                time.Time
+	FirstResponseLatencyMs int64
+	TotalResponseLatencyMs int64
 }
 
-// NewUsageStore opens (creating if necessary) the write-ahead log at path.
-func NewUsageStore(path string) (*UsageStore, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+// UsageStore appends token usage records to a DuckDB database file. It is
+// safe for concurrent use and holds a connection pool open for writes and reads.
+type UsageStore struct {
+	conn *sql.DB
+}
+
+// NewUsageStore opens (creating if necessary) the DuckDB usage database at
+// dbPath and ensures the token_usage table exists.
+func NewUsageStore(dbPath string) (*UsageStore, error) {
+	db, err := sql.Open("duckdb", dbPath)
 	if err != nil {
 		return nil, err
 	}
-	return &UsageStore{mu: sync.Mutex{}, path: path, file: f}, nil
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS token_usage (
+		timestamp TIMESTAMP,
+		response_id VARCHAR,
+		status VARCHAR,
+		prompt_tokens BIGINT,
+		completion_tokens BIGINT,
+		total_tokens BIGINT,
+		cached_tokens BIGINT,
+		request_received_at TIMESTAMP,
+		first_response_at TIMESTAMP,
+		last_response_at TIMESTAMP,
+		error_at TIMESTAMP,
+		first_response_latency_ms BIGINT,
+		total_response_latency_ms BIGINT
+	)`); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &UsageStore{conn: db}, nil
 }
 
-// Record appends a token usage record to the WAL.
+// Record appends a token usage record to the usage database.
 func (s *UsageStore) Record(u *Usage, responseID string, status string, timing ResponseTiming, latency ResponseLatency) error {
 	if u == nil {
 		return errors.New("cannot record usage from nil usage")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rec := UsageRecord{
-		Timestamp:  time.Now().UTC(),
-		ResponseID: responseID,
-		Status:     status,
-		Tokens: TokenUsage{
-			PromptTokens:     u.PromptTokens,
-			CompletionTokens: u.CompletionTokens,
-			TotalTokens:      u.TotalTokens,
-			CachedTokens:     u.PromptTokensDetails.CachedTokens,
-		},
-		Timing:  timing,
-		Latency: latency,
-	}
-	b, err := json.Marshal(rec)
+	ctx := context.Background()
+	_, err := s.conn.ExecContext(ctx, `
+		INSERT INTO token_usage (
+			timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens,
+			request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		time.Now().UTC(),
+		responseID,
+		status,
+		u.PromptTokens,
+		u.CompletionTokens,
+		u.TotalTokens,
+		u.PromptTokensDetails.CachedTokens,
+		timing.RequestReceivedAt,
+		timing.FirstResponseAt,
+		timing.LastResponseAt,
+		timing.ErrorAt,
+		latency.FirstResponseLatencyMs,
+		latency.TotalResponseLatencyMs,
+	)
 	if err != nil {
 		return err
 	}
-	if _, err := s.file.Write(append(b, '\n')); err != nil {
-		return err
-	}
-	return s.file.Sync()
+	return nil
 }
 
-// Records reads back all records in the WAL, in write order.
+// Records reads back all records in the usage database, in write order.
 func (s *UsageStore) Records() ([]UsageRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	data, err := os.ReadFile(s.path)
+	rows, err := s.conn.Query(`
+		SELECT timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens,
+			request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
+		FROM token_usage
+		ORDER BY timestamp
+	`)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
+
 	var recs []UsageRecord
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var r UsageRecord
-		if err := json.Unmarshal([]byte(line), &r); err != nil {
+	for rows.Next() {
+		var r tokenUsageRow
+		if err := rows.Scan(
+			&r.Timestamp,
+			&r.ResponseID,
+			&r.Status,
+			&r.PromptTokens,
+			&r.CompletionTokens,
+			&r.TotalTokens,
+			&r.CachedTokens,
+			&r.RequestReceivedAt,
+			&r.FirstResponseAt,
+			&r.LastResponseAt,
+			&r.ErrorAt,
+			&r.FirstResponseLatencyMs,
+			&r.TotalResponseLatencyMs,
+		); err != nil {
 			return nil, err
 		}
-		recs = append(recs, r)
+		recs = append(recs, UsageRecord{
+			Timestamp:  r.Timestamp,
+			ResponseID: r.ResponseID,
+			Status:     r.Status,
+			Tokens: TokenUsage{
+				PromptTokens:     r.PromptTokens,
+				CompletionTokens: r.CompletionTokens,
+				TotalTokens:      r.TotalTokens,
+				CachedTokens:     r.CachedTokens,
+			},
+			Timing: ResponseTiming{
+				RequestReceivedAt: r.RequestReceivedAt,
+				FirstResponseAt:   r.FirstResponseAt,
+				LastResponseAt:    r.LastResponseAt,
+				ErrorAt:           r.ErrorAt,
+			},
+			Latency: ResponseLatency{
+				FirstResponseLatencyMs: r.FirstResponseLatencyMs,
+				TotalResponseLatencyMs: r.TotalResponseLatencyMs,
+			},
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return recs, nil
 }
 
-// Close releases the write-ahead log file.
+// Close releases the usage database connection.
 func (s *UsageStore) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.file == nil {
-		return nil
-	}
-	err := s.file.Close()
-	s.file = nil
-	return err
+	return s.conn.Close()
 }

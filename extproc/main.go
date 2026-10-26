@@ -204,13 +204,13 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	usageWALPath := os.Getenv("EXTOPROC_USAGE_WAL")
-	if usageWALPath == "" {
-		usageWALPath = "/tmp/extproc-usage.jsonl"
+	usageDBPath := os.Getenv("EXTOPROC_USAGE_DB")
+	if usageDBPath == "" {
+		usageDBPath = "/tmp/extproc-usage.duckdb"
 	}
-	store, err := NewUsageStore(usageWALPath)
+	store, err := NewUsageStore(usageDBPath)
 	if err != nil {
-		log.Fatalf("failed to open usage wal %q: %v", usageWALPath, err)
+		log.Fatalf("failed to open usage db %q: %v", usageDBPath, err)
 	}
 
 	proc := &tokenCounterRequestProcessor{logger: logger, store: store}
