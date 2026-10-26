@@ -35,7 +35,7 @@ services:
       - "127.0.0.1:9090:9090"
       - "127.0.0.1:9091:9091"
     environment:
-      EXTOPROC_USAGE_DB: /data/usage.duckdb
+      EXTPROC_USAGE_DB: /data/usage.duckdb
     volumes:
       - extproc-usage-data:/data
     healthcheck:
