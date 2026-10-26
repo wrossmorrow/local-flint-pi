@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	_ "github.com/marcboeker/go-duckdb"
+	_ "github.com/duckdb/duckdb-go/v2"
 )
 
 // UsageRecord is a timestamped token-usage observation as stored in the
