@@ -1,10 +1,10 @@
 // Command extproc runs an Envoy external processor (extproc) gRPC server for
 // the local-flint-pi model proxy setup, using the envoy-extproc-sdk-go.
 //
-// The processor starts as a no-op: it continues every request phase through
-// Envoy untouched. The next step is to accumulate streamed response bodies,
-// parse the JSON responses, and extract request token counts (usage) to feed
-// metrics/logging for the model calls proxied through Envoy.
+// The processor continues request phases through Envoy untouched. For
+// responses, it accumulates streamed body chunks in the per-stream request
+// context, and once the response stream ends, parses the JSON body to
+// extract token usage for the model calls proxied through Envoy.
 package main
 
 import (
@@ -15,14 +15,20 @@ import (
 	ep "github.com/wrossmorrow/envoy-extproc-sdk-go"
 )
 
+// accumulator keys used to stash per-stream state in the request context.
+const (
+	responseBodyKey  = "responseBodyBuf"
+	responseUsageKey = "responseUsage"
+)
+
 // tokenCounterRequestProcessor is the Envoy external processor implementation.
 //
-// Phase handling is intentionally a no-op for now: every phase continues the
-// request and response streams untouched, and errors are logged. Once the
-// token counting is wired up, the phases will carry the state needed to
-// accumulate streamed request/response bodies and extract JSON token usage.
+// Request phases continue the stream untouched. Response bodies are
+// accumulated in the per-stream context and, once the response stream ends,
+// the JSON body is parsed to extract token usage.
 type tokenCounterRequestProcessor struct {
-	opts *ep.ProcessingOptions
+	opts   *ep.ProcessingOptions
+	logger *slog.Logger
 }
 
 func (s *tokenCounterRequestProcessor) GetName() string {
@@ -46,11 +52,55 @@ func (s *tokenCounterRequestProcessor) ProcessRequestTrailers(ctx *ep.RequestCon
 }
 
 func (s *tokenCounterRequestProcessor) ProcessResponseHeaders(ctx *ep.RequestContext, headers ep.AllHeaders) error {
+	// reset the response accumulators for this stream's response
+	if err := ctx.SetValue(responseBodyKey, ""); err != nil {
+		return err
+	}
 	return ctx.ContinueRequest()
 }
 
 func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContext, body []byte) error {
+	buf, err := ctx.GetValue(responseBodyKey)
+	if err != nil {
+		return err
+	}
+	acc, ok := buf.(string)
+	if !ok {
+		acc = ""
+	}
+	acc += string(body)
+	if err := ctx.SetValue(responseBodyKey, acc); err != nil {
+		return err
+	}
+
+	if ctx.EndOfStream {
+		if err := s.finalizeResponseUsage(ctx, acc); err != nil {
+			return err
+		}
+	}
+
 	return ctx.ContinueRequest()
+}
+
+// finalizeResponseUsage parses the accumulated response body once the
+// response stream has ended, extracts the token usage, and logs it. Failures
+// to parse are logged and do not fail the stream.
+func (s *tokenCounterRequestProcessor) finalizeResponseUsage(ctx *ep.RequestContext, body string) error {
+	usage, err := ParseUsage([]byte(body))
+	if err != nil {
+		s.logger.Warn("failed to parse response body for token usage", slog.String("error", err.Error()))
+		return nil
+	}
+	if err := ctx.SetValue(responseUsageKey, usage); err != nil {
+		return err
+	}
+	s.logger.Info("token usage extracted",
+		slog.Int64("prompt_tokens", usage.PromptTokens),
+		slog.Int64("completion_tokens", usage.CompletionTokens),
+		slog.Int64("total_tokens", usage.TotalTokens),
+		slog.Int64("cached_tokens", usage.PromptTokensDetails.CachedTokens),
+	)
+	return nil
 }
 
 func (s *tokenCounterRequestProcessor) ProcessResponseTrailers(ctx *ep.RequestContext, trailers ep.AllHeaders) error {
@@ -58,11 +108,11 @@ func (s *tokenCounterRequestProcessor) ProcessResponseTrailers(ctx *ep.RequestCo
 }
 
 func (s *tokenCounterRequestProcessor) ErrorHandler(ctx *ep.RequestContext, phase int, err error) {
-	log.Printf("Error in phase %s: %v", ep.RequestPhaseToString(phase), err)
+	s.logger.Error("error in phase", slog.String("phase", ep.RequestPhaseToString(phase)), slog.String("error", err.Error()))
 }
 
 func (s *tokenCounterRequestProcessor) Close(gracePeriodSeconds int32) error {
-	log.Printf("Closing %s", s.GetName())
+	s.logger.Info("closing processor", slog.String("name", s.GetName()))
 	return nil
 }
 
@@ -88,7 +138,7 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	proc := &tokenCounterRequestProcessor{}
+	proc := &tokenCounterRequestProcessor{logger: logger}
 	if err := proc.Init(ep.NewDefaultProcessingOptions(), nil); err != nil {
 		log.Fatalf("Initialize the processor failed: %v.", err.Error())
 	}
