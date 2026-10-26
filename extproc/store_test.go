@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestUsageStoreRecordAndClose(t *testing.T) {
@@ -16,7 +17,13 @@ func TestUsageStoreRecordAndClose(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11}, "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11"); err != nil {
+	timing := ResponseTiming{
+		RequestReceivedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		FirstResponseAt:   time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		LastResponseAt:    time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC),
+	}
+	latency := timing.Latency()
+	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11}, "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11", timing, latency); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
 
@@ -36,6 +43,21 @@ func TestUsageStoreRecordAndClose(t *testing.T) {
 	if recs[0].Timestamp.IsZero() {
 		t.Errorf("Records()[0].Timestamp = %v, want non-zero", recs[0].Timestamp)
 	}
+	if !recs[0].Timing.RequestReceivedAt.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("Records()[0].Timing.RequestReceivedAt = %v, want 2026-01-01T00:00:00Z", recs[0].Timing.RequestReceivedAt)
+	}
+	if !recs[0].Timing.FirstResponseAt.Equal(time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC)) {
+		t.Errorf("Records()[0].Timing.FirstResponseAt = %v, want 2026-01-01T00:00:01Z", recs[0].Timing.FirstResponseAt)
+	}
+	if !recs[0].Timing.LastResponseAt.Equal(time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC)) {
+		t.Errorf("Records()[0].Timing.LastResponseAt = %v, want 2026-01-01T00:00:03Z", recs[0].Timing.LastResponseAt)
+	}
+	if recs[0].Latency.FirstResponseLatencyMs != 1000 {
+		t.Errorf("Records()[0].Latency.FirstResponseLatencyMs = %d, want 1000", recs[0].Latency.FirstResponseLatencyMs)
+	}
+	if recs[0].Latency.TotalResponseLatencyMs != 3000 {
+		t.Errorf("Records()[0].Latency.TotalResponseLatencyMs = %d, want 3000", recs[0].Latency.TotalResponseLatencyMs)
+	}
 }
 
 func TestUsageStoreRecordNilUsage(t *testing.T) {
@@ -47,7 +69,7 @@ func TestUsageStoreRecordNilUsage(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.Record(nil, "chatcmpl-1"); err == nil {
+	if err := store.Record(nil, "chatcmpl-1", ResponseTiming{}, ResponseLatency{}); err == nil {
 		t.Fatal("Record() expected error for nil usage, got nil")
 	}
 }
@@ -67,7 +89,7 @@ func TestUsageStoreConcurrentRecords(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			if err := store.Record(&Usage{PromptTokens: int64(i), CompletionTokens: int64(i), TotalTokens: int64(i)}, ""); err != nil {
+			if err := store.Record(&Usage{PromptTokens: int64(i), CompletionTokens: int64(i), TotalTokens: int64(i)}, "", ResponseTiming{}, ResponseLatency{}); err != nil {
 				t.Errorf("Record() error = %v", err)
 			}
 		}(i)

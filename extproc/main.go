@@ -3,22 +3,26 @@
 //
 // The processor continues request phases through Envoy untouched. For
 // responses, it accumulates streamed body chunks in the per-stream request
-// context, and once the response stream ends, parses the JSON body to
-// extract token usage for the model calls proxied through Envoy.
+// context, and once the response stream ends, finalizes response timing and
+// parses the JSON body to extract token usage for the model calls proxied
+// through Envoy.
 package main
 
 import (
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
+	"time"
 
 	ep "github.com/wrossmorrow/envoy-extproc-sdk-go"
 )
 
 // accumulator keys used to stash per-stream state in the request context.
 const (
-	responseBodyKey  = "responseBodyBuf"
-	responseUsageKey = "responseUsage"
+	responseBodyKey   = "responseBodyBuf"
+	responseUsageKey  = "responseUsage"
+	responseTimingKey = "responseTiming"
 )
 
 // tokenCounterRequestProcessor is the Envoy external processor implementation.
@@ -41,6 +45,16 @@ func (s *tokenCounterRequestProcessor) GetOptions() *ep.ProcessingOptions {
 }
 
 func (s *tokenCounterRequestProcessor) ProcessRequestHeaders(ctx *ep.RequestContext, headers ep.AllHeaders) error {
+	// stamp the request-received timestamp; the SDK seeds the request context
+	// with the stream start time at the beginning of the request headers phase,
+	// so prefer it and fall back to the current time if the phase was skipped
+	timing := &ResponseTiming{RequestReceivedAt: ctx.Started}
+	if timing.RequestReceivedAt.IsZero() {
+		timing.RequestReceivedAt = time.Now()
+	}
+	if err := ctx.SetValue(responseTimingKey, timing); err != nil {
+		return err
+	}
 	return ctx.ContinueRequest()
 }
 
@@ -74,8 +88,22 @@ func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContex
 		return err
 	}
 
+	timing, err := ctx.GetValue(responseTimingKey)
+	if err != nil {
+		return err
+	}
+	t, ok := timing.(*ResponseTiming)
+	if !ok {
+		return fmt.Errorf("expected *ResponseTiming in request context, got %T", timing)
+	}
+
+	// stamp the first response timestamp on the first body chunk received
+	if t.FirstResponseAt.IsZero() {
+		t.FirstResponseAt = time.Now()
+	}
+
 	if ctx.EndOfStream {
-		if err := s.finalizeResponseUsage(ctx, acc); err != nil {
+		if err := s.finalizeResponse(ctx, acc, t); err != nil {
 			return err
 		}
 	}
@@ -83,10 +111,22 @@ func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContex
 	return ctx.ContinueRequest()
 }
 
-// finalizeResponseUsage parses the accumulated response body once the
-// response stream has ended, extracts the token usage, and logs it. Failures
-// to parse are logged and do not fail the stream.
-func (s *tokenCounterRequestProcessor) finalizeResponseUsage(ctx *ep.RequestContext, body string) error {
+// finalizeResponse finalizes the response timing once the response stream has
+// ended, parses the accumulated response body for token usage, and writes the
+// usage record. Failures to parse are logged and do not fail the stream.
+func (s *tokenCounterRequestProcessor) finalizeResponse(ctx *ep.RequestContext, body string, timing *ResponseTiming) error {
+	// the entire response body has now been received
+	timing.LastResponseAt = time.Now()
+
+	latency := timing.Latency()
+	s.logger.Info("response timing recorded",
+		slog.Time("request_received_at", timing.RequestReceivedAt),
+		slog.Time("first_response_at", timing.FirstResponseAt),
+		slog.Time("last_response_at", timing.LastResponseAt),
+		slog.Int64("first_response_latency_ms", latency.FirstResponseLatencyMs),
+		slog.Int64("total_response_latency_ms", latency.TotalResponseLatencyMs),
+	)
+
 	usage, err := ParseUsageFromSSE(body)
 	if err != nil {
 		s.logger.Warn("failed to parse response body for token usage", slog.String("error", err.Error()))
@@ -95,7 +135,7 @@ func (s *tokenCounterRequestProcessor) finalizeResponseUsage(ctx *ep.RequestCont
 	if err := ctx.SetValue(responseUsageKey, &usage.Usage); err != nil {
 		return err
 	}
-	if err := s.store.Record(&usage.Usage, usage.ID); err != nil {
+	if err := s.store.Record(&usage.Usage, usage.ID, *timing, latency); err != nil {
 		s.logger.Warn("failed to write token usage to wal", slog.String("error", err.Error()))
 	}
 	s.logger.Info("token usage extracted",

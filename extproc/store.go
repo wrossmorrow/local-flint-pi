@@ -11,12 +11,14 @@ import (
 
 // UsageRecord is a timestamped token-usage observation written to the WAL.
 type UsageRecord struct {
-	Timestamp        time.Time `json:"timestamp"`
-	ResponseID       string    `json:"response_id,omitempty"`
-	PromptTokens     int64     `json:"prompt_tokens"`
-	CompletionTokens int64     `json:"completion_tokens"`
-	TotalTokens      int64     `json:"total_tokens"`
-	CachedTokens     int64     `json:"cached_tokens"`
+	Timestamp        time.Time       `json:"timestamp"`
+	ResponseID       string          `json:"response_id,omitempty"`
+	PromptTokens     int64           `json:"prompt_tokens"`
+	CompletionTokens int64           `json:"completion_tokens"`
+	TotalTokens      int64           `json:"total_tokens"`
+	CachedTokens     int64           `json:"cached_tokens"`
+	Timing           ResponseTiming  `json:"timing"`
+	Latency          ResponseLatency `json:"latency"`
 }
 
 // UsageStore appends token usage records to a write-ahead log (JSONL) file.
@@ -37,7 +39,7 @@ func NewUsageStore(path string) (*UsageStore, error) {
 }
 
 // Record appends a token usage record to the WAL.
-func (s *UsageStore) Record(u *Usage, responseID string) error {
+func (s *UsageStore) Record(u *Usage, responseID string, timing ResponseTiming, latency ResponseLatency) error {
 	if u == nil {
 		return errors.New("cannot record usage from nil usage")
 	}
@@ -50,6 +52,8 @@ func (s *UsageStore) Record(u *Usage, responseID string) error {
 		CompletionTokens: u.CompletionTokens,
 		TotalTokens:      u.TotalTokens,
 		CachedTokens:     u.PromptTokensDetails.CachedTokens,
+		Timing:           timing,
+		Latency:          latency,
 	}
 	b, err := json.Marshal(rec)
 	if err != nil {
