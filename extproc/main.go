@@ -97,8 +97,9 @@ func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContex
 		return fmt.Errorf("expected *ResponseTiming in request context, got %T", timing)
 	}
 
-	// stamp the first response timestamp on the first body chunk received
-	if t.FirstResponseAt.IsZero() {
+	// stamp the first response timestamp on the first non-empty body chunk
+	// received, so the measurement is a valid time-to-first-token style latency
+	if t.FirstResponseAt.IsZero() && len(body) > 0 {
 		t.FirstResponseAt = time.Now()
 	}
 
