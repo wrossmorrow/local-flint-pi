@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	_ "github.com/marcboeker/go-duckdb"
+	_ "github.com/duckdb/duckdb-go/v2"
 )
 
 // UsageRecord is a timestamped token-usage observation as stored in the
@@ -50,7 +50,8 @@ type tokenUsageRow struct {
 // UsageStore appends token usage records to a DuckDB database file. It is
 // safe for concurrent use and holds a connection pool open for writes and reads.
 type UsageStore struct {
-	conn *sql.DB
+	conn   *sql.DB
+	dbPath string
 }
 
 // NewUsageStore opens (creating if necessary) the DuckDB usage database at
@@ -82,7 +83,7 @@ func NewUsageStore(dbPath string) (*UsageStore, error) {
 		db.Close()
 		return nil, err
 	}
-	return &UsageStore{conn: db}, nil
+	return &UsageStore{conn: db, dbPath: dbPath}, nil
 }
 
 // Record appends a token usage record to the usage database.
@@ -181,6 +182,18 @@ func (s *UsageStore) Records() ([]UsageRecord, error) {
 // Close releases the usage database connection.
 func (s *UsageStore) Close() error {
 	return s.conn.Close()
+}
+
+// DBPath returns the path of the usage database file.
+func (s *UsageStore) DBPath() string {
+	return s.dbPath
+}
+
+// Conn returns a dedicated connection from the usage database connection
+// pool. Connection-local operations such as attaching databases must run on a
+// single connection, so callers should close the connection when done.
+func (s *UsageStore) Conn(ctx context.Context) (*sql.Conn, error) {
+	return s.conn.Conn(ctx)
 }
 
 // Query runs an arbitrary SQL query against the usage database and returns

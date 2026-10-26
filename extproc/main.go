@@ -5,10 +5,12 @@
 // responses, it accumulates streamed body chunks in the per-stream request
 // context, and once the response stream ends, finalizes response timing and
 // parses the JSON body to extract token usage for the model calls proxied
-// through Envoy.
+// through Envoy. On close it uploads the accumulated usage to MotherDuck over
+// the `md:` protocol.
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,11 +34,13 @@ const (
 //
 // Request phases continue the stream untouched. Response bodies are
 // accumulated in the per-stream context and, once the response stream ends,
-// the JSON body is parsed to extract token usage.
+// the JSON body is parsed to extract token usage. On close it uploads the
+// accumulated usage to MotherDuck over the `md:` protocol.
 type tokenCounterRequestProcessor struct {
-	opts   *ep.ProcessingOptions
-	logger *slog.Logger
-	store  *UsageStore
+	opts       *ep.ProcessingOptions
+	logger     *slog.Logger
+	store      *UsageStore
+	mdDatabase string
 }
 
 func (s *tokenCounterRequestProcessor) GetName() string {
@@ -179,14 +183,21 @@ func (s *tokenCounterRequestProcessor) ErrorHandler(ctx *ep.RequestContext, phas
 
 func (s *tokenCounterRequestProcessor) Close(gracePeriodSeconds int32) error {
 	s.logger.Info("closing processor", slog.String("name", s.GetName()))
+	var closeErr error
 	if s.store != nil {
-		return s.store.Close()
+		// the usage database is opened by this process for the motherduck upload,
+		// so it is closed after the upload rather than before
+		if err := s.uploadToMotherDuck(context.Background(), s.store.DBPath()); err != nil {
+			s.logger.Warn("failed to upload token usage to motherduck", slog.String("error", err.Error()))
+		}
+		closeErr = s.store.Close()
 	}
-	return nil
+	return closeErr
 }
 
 func (s *tokenCounterRequestProcessor) Init(opts *ep.ProcessingOptions, nonFlagArgs []string) error {
 	s.opts = opts
+	s.mdDatabase = MotherDuckDatabase()
 	return nil
 }
 

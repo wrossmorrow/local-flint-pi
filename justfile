@@ -65,3 +65,9 @@ down repo *flags="":
     GITHUB_REPO_NAME={{ repo }} \
     REC_API_KEY=0 \
         docker compose down {{ flags }}
+
+query-usage-table query host="127.0.0.1" port="9091":
+    curl -s -X POST http://{{host}}:{{port}}/query \
+        -H 'content-type: application/json'\
+        -H 'accept: application/json' \
+        -d '{"query": "{{query}}"}' | jq .
