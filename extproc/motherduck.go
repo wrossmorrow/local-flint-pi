@@ -29,9 +29,18 @@ const motherDuckAttach = "ATTACH 'md:%s' AS \"%s\";"
 // table but without any rows.
 const motherDuckCreateTable = "CREATE TABLE IF NOT EXISTS \"%s\".token_usage AS SELECT * FROM token_usage WHERE 1=0;"
 
-// motherDuckInsert inserts all rows of the local token usage table into the
-// target MotherDuck token usage table.
-const motherDuckInsert = "INSERT INTO \"%s\".token_usage SELECT * FROM token_usage;"
+// motherDuckInsert inserts the rows of the local token usage table that are
+// not yet present in the target MotherDuck token usage table into the target
+// table, skipping rows whose response_id already exists there, so repeated
+// uploads of the same accumulated usage do not duplicate data.
+const motherDuckInsert = `
+	INSERT INTO "%s".token_usage
+	SELECT * FROM token_usage AS l
+	WHERE NOT EXISTS (
+		SELECT 1 FROM "%s".token_usage AS t
+		WHERE t.response_id = l.response_id
+	);
+`
 
 // MotherDuckDatabase returns the target MotherDuck database name for the usage
 // upload, or an empty string when the upload is disabled.
@@ -72,7 +81,7 @@ func (s *tokenCounterRequestProcessor) uploadToMotherDuck(ctx context.Context, d
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckCreateTable, s.mdDatabase)); err != nil {
 		return fmt.Errorf("failed to create motherduck token usage table: %w", err)
 	}
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckInsert, s.mdDatabase)); err != nil {
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckInsert, s.mdDatabase, s.mdDatabase)); err != nil {
 		return fmt.Errorf("failed to insert token usage into motherduck: %w", err)
 	}
 	return nil
