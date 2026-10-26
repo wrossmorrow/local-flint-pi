@@ -118,8 +118,8 @@ func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContex
 func (s *tokenCounterRequestProcessor) finalizeResponse(ctx *ep.RequestContext, body string, timing *ResponseTiming) error {
 	// the entire response body has now been received
 	timing.LastResponseAt = time.Now()
-	timing.Status = "ok"
 
+	status := "ok"
 	latency := timing.Latency()
 	s.logger.Info("response timing recorded",
 		slog.Time("request_received_at", timing.RequestReceivedAt),
@@ -137,7 +137,7 @@ func (s *tokenCounterRequestProcessor) finalizeResponse(ctx *ep.RequestContext, 
 	if err := ctx.SetValue(responseUsageKey, &usage.Usage); err != nil {
 		return err
 	}
-	if err := s.store.Record(&usage.Usage, usage.ID, *timing, latency); err != nil {
+	if err := s.store.Record(&usage.Usage, usage.ID, status, *timing, latency); err != nil {
 		s.logger.Warn("failed to write token usage to wal", slog.String("error", err.Error()))
 	}
 	s.logger.Info("token usage extracted",
@@ -166,7 +166,6 @@ func (s *tokenCounterRequestProcessor) ErrorHandler(ctx *ep.RequestContext, phas
 	if !ok {
 		return
 	}
-	t.Status = "error"
 	t.ErrorAt = time.Now()
 }
 

@@ -11,14 +11,21 @@ import (
 
 // UsageRecord is a timestamped token-usage observation written to the WAL.
 type UsageRecord struct {
-	Timestamp        time.Time       `json:"timestamp"`
-	ResponseID       string          `json:"response_id,omitempty"`
-	PromptTokens     int64           `json:"prompt_tokens"`
-	CompletionTokens int64           `json:"completion_tokens"`
-	TotalTokens      int64           `json:"total_tokens"`
-	CachedTokens     int64           `json:"cached_tokens"`
-	Timing           ResponseTiming  `json:"timing"`
-	Latency          ResponseLatency `json:"latency"`
+	Timestamp  time.Time       `json:"timestamp"`
+	ResponseID string          `json:"response_id,omitempty"`
+	Status     string          `json:"status,omitempty"`
+	Tokens     TokenUsage      `json:"tokens"`
+	Timing     ResponseTiming  `json:"timing"`
+	Latency    ResponseLatency `json:"latency"`
+}
+
+// TokenUsage is the token accounting nested under the "tokens" key of a usage
+// record.
+type TokenUsage struct {
+	PromptTokens     int64 `json:"prompt"`
+	CompletionTokens int64 `json:"completion"`
+	TotalTokens      int64 `json:"total"`
+	CachedTokens     int64 `json:"cached"`
 }
 
 // UsageStore appends token usage records to a write-ahead log (JSONL) file.
@@ -39,21 +46,24 @@ func NewUsageStore(path string) (*UsageStore, error) {
 }
 
 // Record appends a token usage record to the WAL.
-func (s *UsageStore) Record(u *Usage, responseID string, timing ResponseTiming, latency ResponseLatency) error {
+func (s *UsageStore) Record(u *Usage, responseID string, status string, timing ResponseTiming, latency ResponseLatency) error {
 	if u == nil {
 		return errors.New("cannot record usage from nil usage")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec := UsageRecord{
-		Timestamp:        time.Now().UTC(),
-		ResponseID:       responseID,
-		PromptTokens:     u.PromptTokens,
-		CompletionTokens: u.CompletionTokens,
-		TotalTokens:      u.TotalTokens,
-		CachedTokens:     u.PromptTokensDetails.CachedTokens,
-		Timing:           timing,
-		Latency:          latency,
+		Timestamp:  time.Now().UTC(),
+		ResponseID: responseID,
+		Status:     status,
+		Tokens: TokenUsage{
+			PromptTokens:     u.PromptTokens,
+			CompletionTokens: u.CompletionTokens,
+			TotalTokens:      u.TotalTokens,
+			CachedTokens:     u.PromptTokensDetails.CachedTokens,
+		},
+		Timing:  timing,
+		Latency: latency,
 	}
 	b, err := json.Marshal(rec)
 	if err != nil {
