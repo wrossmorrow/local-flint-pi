@@ -3,7 +3,7 @@ module github.com/wrossmorrow/local-flint-pi/extproc
 go 1.25.0
 
 require (
-	github.com/duckdb/duckdb-go/v2 v2.20000.0
+	github.com/duckdb/duckdb-go/v2 v2.10506.0
 	github.com/wrossmorrow/envoy-extproc-sdk-go v0.1.2
 )
 
@@ -12,7 +12,12 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
-	github.com/duckdb/duckdb-go-bindings v0.20000.0 // indirect
+	github.com/duckdb/duckdb-go-bindings v0.10506.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.10506.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.10506.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 v0.10506.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.10506.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.10506.0 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
@@ -29,11 +34,6 @@ require (
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
-	go.duckdb.org/libduckdb/darwin-amd64 v0.20000.0 // indirect
-	go.duckdb.org/libduckdb/darwin-arm64 v0.20000.0 // indirect
-	go.duckdb.org/libduckdb/linux-amd64 v0.20000.0 // indirect
-	go.duckdb.org/libduckdb/linux-arm64 v0.20000.0 // indirect
-	go.duckdb.org/libduckdb/windows-amd64 v0.20000.0 // indirect
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
