@@ -21,6 +21,7 @@ func TestUsageStoreRecordAndClose(t *testing.T) {
 		RequestReceivedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		FirstResponseAt:   time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
 		LastResponseAt:    time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC),
+		Status:            "ok",
 	}
 	latency := timing.Latency()
 	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11}, "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11", timing, latency); err != nil {
@@ -51,6 +52,9 @@ func TestUsageStoreRecordAndClose(t *testing.T) {
 	}
 	if !recs[0].Timing.LastResponseAt.Equal(time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC)) {
 		t.Errorf("Records()[0].Timing.LastResponseAt = %v, want 2026-01-01T00:00:03Z", recs[0].Timing.LastResponseAt)
+	}
+	if recs[0].Timing.Status != "ok" {
+		t.Errorf("Records()[0].Timing.Status = %q, want ok", recs[0].Timing.Status)
 	}
 	if recs[0].Latency.FirstResponseLatencyMs != 1000 {
 		t.Errorf("Records()[0].Latency.FirstResponseLatencyMs = %d, want 1000", recs[0].Latency.FirstResponseLatencyMs)

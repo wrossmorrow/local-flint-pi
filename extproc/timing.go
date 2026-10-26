@@ -12,6 +12,12 @@ type ResponseTiming struct {
 	FirstResponseAt time.Time `json:"first_response_at,omitempty"`
 	// LastResponseAt is when the entire response body had been received.
 	LastResponseAt time.Time `json:"last_response_at,omitempty"`
+	// Status is the outcome of the response lifecycle for the stream:
+	// "ok" once the response finalized normally, "error" once the stream
+	// errored.
+	Status string `json:"status,omitempty"`
+	// ErrorAt is when the stream errored, set when Status is "error".
+	ErrorAt time.Time `json:"error_at,omitempty"`
 }
 
 // ResponseLatency summarizes ResponseTiming as first and total response

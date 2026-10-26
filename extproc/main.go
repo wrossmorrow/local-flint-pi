@@ -118,6 +118,7 @@ func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContex
 func (s *tokenCounterRequestProcessor) finalizeResponse(ctx *ep.RequestContext, body string, timing *ResponseTiming) error {
 	// the entire response body has now been received
 	timing.LastResponseAt = time.Now()
+	timing.Status = "ok"
 
 	latency := timing.Latency()
 	s.logger.Info("response timing recorded",
@@ -154,6 +155,19 @@ func (s *tokenCounterRequestProcessor) ProcessResponseTrailers(ctx *ep.RequestCo
 
 func (s *tokenCounterRequestProcessor) ErrorHandler(ctx *ep.RequestContext, phase int, err error) {
 	s.logger.Error("error in phase", slog.String("phase", ep.RequestPhaseToString(phase)), slog.String("error", err.Error()))
+
+	// mark the per-stream timing as errored; the finalized-with-error record
+	// is written once the error has been handled
+	timing, terr := ctx.GetValue(responseTimingKey)
+	if terr != nil {
+		return
+	}
+	t, ok := timing.(*ResponseTiming)
+	if !ok {
+		return
+	}
+	t.Status = "error"
+	t.ErrorAt = time.Now()
 }
 
 func (s *tokenCounterRequestProcessor) Close(gracePeriodSeconds int32) error {
