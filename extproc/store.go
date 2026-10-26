@@ -182,3 +182,39 @@ func (s *UsageStore) Records() ([]UsageRecord, error) {
 func (s *UsageStore) Close() error {
 	return s.conn.Close()
 }
+
+// Query runs an arbitrary SQL query against the usage database and returns
+// the result rows as a list of JSON object records (one map per row, keyed by
+// column name).
+func (s *UsageStore) Query(query string) ([]map[string]any, error) {
+	rows, err := s.conn.QueryContext(context.Background(), query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	recs := []map[string]any{}
+	for rows.Next() {
+		vals := make([]any, len(cols))
+		dest := make([]any, len(cols))
+		for i := range vals {
+			dest[i] = &vals[i]
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return nil, err
+		}
+		rec := make(map[string]any, len(cols))
+		for i, c := range cols {
+			rec[c] = vals[i]
+		}
+		recs = append(recs, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return recs, nil
+}

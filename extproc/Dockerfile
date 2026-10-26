@@ -19,5 +19,6 @@ COPY --from=builder /go/bin/grpc-health-probe /grpc-health-probe
 
 EXPOSE 50051
 EXPOSE 9090
+EXPOSE 9091
 
 CMD ["/extproc"]

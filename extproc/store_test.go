@@ -110,3 +110,34 @@ func TestUsageStoreConcurrentRecords(t *testing.T) {
 		t.Fatalf("Records() len = %d, want %d", len(recs), n)
 	}
 }
+
+func TestUsageStoreQuery(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewUsageStore(filepath.Join(t.TempDir(), "usage.duckdb"))
+	if err != nil {
+		t.Fatalf("NewUsageStore() error = %v", err)
+	}
+	defer store.Close()
+
+	timing := ResponseTiming{
+		RequestReceivedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		FirstResponseAt:   time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		LastResponseAt:    time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC),
+	}
+	latency := timing.Latency()
+	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11}, "chatcmpl-query-1", "ok", timing, latency); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	recs, err := store.Query("SELECT * FROM token_usage")
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("Query() len = %d, want 1", len(recs))
+	}
+	if recs[0]["response_id"] != "chatcmpl-query-1" {
+		t.Errorf("Query()[0][response_id] = %#v, want chatcmpl-query-1", recs[0]["response_id"])
+	}
+}

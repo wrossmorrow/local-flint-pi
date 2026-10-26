@@ -9,9 +9,12 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -195,6 +198,44 @@ type processor interface {
 	ep.RequestProcessor
 }
 
+// queryHandler serves POST /query, accepting a JSON body {"query": "..."} and
+// returning {"records": [...]} — one JSON object per result row — from the
+// usage database.
+func queryHandler(s *UsageStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		var req struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "bad_request"})
+			return
+		}
+		if req.Query == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "empty_query"})
+			return
+		}
+		recs, err := s.Query(req.Query)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"records": recs})
+	}
+}
+
 func main() {
 	sopts := ep.NewDefaultServerOptions()
 	sopts.ExtProcPort = 50051
@@ -219,4 +260,17 @@ func main() {
 	}
 
 	ep.MustServe(sopts, proc, logger)
+
+	// simple HTTP server for ad-hoc querying of the usage database
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("/query", queryHandler(store))
+	httpSrv := &http.Server{
+		Addr:    ":9091",
+		Handler: httpMux,
+	}
+	go func() {
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("query http server error: %v", err)
+		}
+	}()
 }
