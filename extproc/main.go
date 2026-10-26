@@ -185,12 +185,12 @@ func (s *tokenCounterRequestProcessor) Close(gracePeriodSeconds int32) error {
 	s.logger.Info("closing processor", slog.String("name", s.GetName()))
 	var closeErr error
 	if s.store != nil {
-		closeErr = s.store.Close()
-		// the duckdb cli cannot open a database file that another process holds
-		// a lock on, so the usage database is closed before the motherduck upload
+		// the usage database is opened by this process for the motherduck upload,
+		// so it is closed after the upload rather than before
 		if err := s.uploadToMotherDuck(context.Background(), s.store.DBPath()); err != nil {
 			s.logger.Warn("failed to upload token usage to motherduck", slog.String("error", err.Error()))
 		}
+		closeErr = s.store.Close()
 	}
 	return closeErr
 }
