@@ -86,7 +86,7 @@ func main() {
 	sopts.TerminationGracePeriodSeconds = 30
 	sopts.UnreadyPropagationDelaySeconds = 0
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	proc := &tokenCounterRequestProcessor{}
 	if err := proc.Init(ep.NewDefaultProcessingOptions(), nil); err != nil {
