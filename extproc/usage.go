@@ -19,25 +19,39 @@ type Usage struct {
 	PromptTokensDetails PromptTokensDetails `json:"prompt_tokens_details"`
 }
 
-// responseUsageEnvelope mirrors the single-JSON-object shape of a chat
-// completion response carrying an OpenAI-style "usage" field, as emitted by
-// the flint model responses.
-type responseUsageEnvelope struct {
-	Usage Usage `json:"usage"`
+// ResponseUsage pairs a chat completion response id with its token usage.
+type ResponseUsage struct {
+	ID    string `json:"id"`
+	Usage Usage  `json:"usage"`
 }
 
-// ParseUsage extracts token usage from a complete JSON response body. It
-// expects a single JSON object with a top-level "usage" field. An error is
-// returned if the body is not valid JSON or carries no usage data.
-func ParseUsage(body []byte) (*Usage, error) {
+// responseUsageEnvelope mirrors the single-JSON-doc shape of a chat completion
+// response carrying an OpenAI-style "usage" field.
+type responseUsageEnvelope struct {
+	ID    string `json:"id"`
+	Usage Usage  `json:"usage"`
+}
+
+// parseResponseUsage unmarshals a complete JSON chat completion response and
+// returns the response id together with its token usage. An error is returned
+// if the body is not valid JSON or carries no usage data.
+func parseResponseUsage(body []byte) (*ResponseUsage, error) {
 	var env responseUsageEnvelope
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response JSON: %w", err)
 	}
-
 	if env.Usage.TotalTokens == 0 && env.Usage.CompletionTokens == 0 && env.Usage.PromptTokens == 0 {
 		return nil, errors.New("response body contained no usage data")
 	}
+	return &ResponseUsage{ID: env.ID, Usage: env.Usage}, nil
+}
 
-	return &env.Usage, nil
+// ParseUsage extracts token usage from a complete JSON response body. An
+// error is returned if the body is not valid JSON or carries no usage data.
+func ParseUsage(body []byte) (*Usage, error) {
+	r, err := parseResponseUsage(body)
+	if err != nil {
+		return nil, err
+	}
+	return &r.Usage, nil
 }

@@ -29,6 +29,7 @@ const (
 type tokenCounterRequestProcessor struct {
 	opts   *ep.ProcessingOptions
 	logger *slog.Logger
+	store  *UsageStore
 }
 
 func (s *tokenCounterRequestProcessor) GetName() string {
@@ -86,19 +87,22 @@ func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContex
 // response stream has ended, extracts the token usage, and logs it. Failures
 // to parse are logged and do not fail the stream.
 func (s *tokenCounterRequestProcessor) finalizeResponseUsage(ctx *ep.RequestContext, body string) error {
-	usage, err := ParseUsage([]byte(body))
+	usage, err := parseResponseUsage([]byte(body))
 	if err != nil {
 		s.logger.Warn("failed to parse response body for token usage", slog.String("error", err.Error()))
 		return nil
 	}
-	if err := ctx.SetValue(responseUsageKey, usage); err != nil {
+	if err := ctx.SetValue(responseUsageKey, &usage.Usage); err != nil {
 		return err
 	}
+	if err := s.store.Record(&usage.Usage, usage.ID); err != nil {
+		s.logger.Warn("failed to write token usage to wal", slog.String("error", err.Error()))
+	}
 	s.logger.Info("token usage extracted",
-		slog.Int64("prompt_tokens", usage.PromptTokens),
-		slog.Int64("completion_tokens", usage.CompletionTokens),
-		slog.Int64("total_tokens", usage.TotalTokens),
-		slog.Int64("cached_tokens", usage.PromptTokensDetails.CachedTokens),
+		slog.Int64("prompt_tokens", usage.Usage.PromptTokens),
+		slog.Int64("completion_tokens", usage.Usage.CompletionTokens),
+		slog.Int64("total_tokens", usage.Usage.TotalTokens),
+		slog.Int64("cached_tokens", usage.Usage.PromptTokensDetails.CachedTokens),
 	)
 	return nil
 }
@@ -113,6 +117,9 @@ func (s *tokenCounterRequestProcessor) ErrorHandler(ctx *ep.RequestContext, phas
 
 func (s *tokenCounterRequestProcessor) Close(gracePeriodSeconds int32) error {
 	s.logger.Info("closing processor", slog.String("name", s.GetName()))
+	if s.store != nil {
+		return s.store.Close()
+	}
 	return nil
 }
 
@@ -138,7 +145,16 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	proc := &tokenCounterRequestProcessor{logger: logger}
+	usageWALPath := os.Getenv("EXTOPROC_USAGE_WAL")
+	if usageWALPath == "" {
+		usageWALPath = "/tmp/extproc-usage.jsonl"
+	}
+	store, err := NewUsageStore(usageWALPath)
+	if err != nil {
+		log.Fatalf("failed to open usage wal %q: %v", usageWALPath, err)
+	}
+
+	proc := &tokenCounterRequestProcessor{logger: logger, store: store}
 	if err := proc.Init(ep.NewDefaultProcessingOptions(), nil); err != nil {
 		log.Fatalf("Initialize the processor failed: %v.", err.Error())
 	}
