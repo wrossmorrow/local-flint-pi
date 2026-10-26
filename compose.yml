@@ -12,7 +12,8 @@ services:
     image: envoyproxy/envoy:${ENVOY_VERSION:-v1.35-latest}
     command: envoy -c /etc/envoy/envoy.yaml --log-level ${ENVOY_LOG_LEVEL:-info}
     ports:
-      - "127.0.0.1:9999:9901"
+      - "127.0.0.1:9999:11005"
+      - "127.0.0.1:9998:9901"
     extra_hosts: 
       - "host.docker.internal:host-gateway"
     volumes:
