@@ -22,13 +22,14 @@ const motherDuckInstall = "INSTALL md;"
 const motherDuckLoad = "LOAD md;"
 
 // motherDuckAttach attaches the target MotherDuck database using the `md:`
-// protocol.
-const motherDuckAttach = "ATTACH 'md:%s' AS %s;"
+// protocol. The database name is quoted, since MotherDuck database names may
+// contain characters (such as hyphens) that are not valid bare identifiers.
+const motherDuckAttach = "ATTACH 'md:%s' AS \"%s\";"
 
 // motherDuckUploadTable creates or replaces the token usage table in the
 // target MotherDuck database from the token usage table in the local usage
-// database.
-const motherDuckUploadTable = "CREATE OR REPLACE TABLE %s.token_usage AS SELECT * FROM token_usage;"
+// database. The target database name is quoted for the same reason.
+const motherDuckUploadTable = "CREATE OR REPLACE TABLE \"%s\".token_usage AS SELECT * FROM token_usage;"
 
 // MotherDuckDatabase returns the target MotherDuck database name for the usage
 // upload, or an empty string when the upload is disabled.
