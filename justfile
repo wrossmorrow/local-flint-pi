@@ -11,16 +11,18 @@ launch_timeout := "300"
 default:
     just --list
 
-# containerize for sessions, optionally targeting a toolchain stage (agent, python, golang, rust)
+# containerize for sessions, optionally targeting a toolchain stage (agent, python, golang, rust, java17, java21)
 build toolchain="agent":
     docker build --target {{ toolchain }} -t {{ image_base }}-{{ toolchain }} .
 
-# containerize all image variants (agent, python, golang, rust)
+# containerize all image variants (agent, python, golang, rust, java17, java21)
 build-all:
     just build agent
     just build python
     just build golang
     just build rust
+    just build java17
+    just build java21
 
 # serve flint in the background (no-op if already running)
 serve port=flint_port:
