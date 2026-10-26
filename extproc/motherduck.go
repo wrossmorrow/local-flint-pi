@@ -26,8 +26,24 @@ const motherDuckAttach = "ATTACH 'md:%s' AS \"%s\";"
 
 // motherDuckCreateTable creates the token usage table in the target MotherDuck
 // database if it does not yet exist, with the same schema as the local usage
-// table but without any rows.
-const motherDuckCreateTable = "CREATE TABLE IF NOT EXISTS \"%s\".token_usage AS SELECT * FROM token_usage WHERE 1=0;"
+// table but without any rows, keyed on the response id.
+const motherDuckCreateTable = `
+	CREATE TABLE IF NOT EXISTS "%s".token_usage (
+		timestamp TIMESTAMP,
+		response_id VARCHAR PRIMARY KEY,
+		status VARCHAR,
+		prompt_tokens BIGINT,
+		completion_tokens BIGINT,
+		total_tokens BIGINT,
+		cached_tokens BIGINT,
+		request_received_at TIMESTAMP,
+		first_response_at TIMESTAMP,
+		last_response_at TIMESTAMP,
+		error_at TIMESTAMP,
+		first_response_latency_ms BIGINT,
+		total_response_latency_ms BIGINT
+	);
+`
 
 // motherDuckInsert inserts the rows of the local token usage table that are
 // not yet present in the target MotherDuck token usage table into the target
