@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
-	"strings"
 )
 
 // motherDuckDatabaseEnv is the environment variable that names the target
@@ -42,12 +40,12 @@ func MotherDuckDatabase() string {
 }
 
 // uploadToMotherDuck uploads the token usage accumulated in the local usage
-// database to MotherDuck over the `md:` protocol, using the DuckDB CLI which
-// runs a DuckDB version supported by the MotherDuck extension. It is a no-op
-// when no target database is configured and returns an error if the upload
-// fails, so callers can log and continue shutdown. The local usage database
-// must not be held open by the caller while this runs, since the DuckDB CLI
-// cannot open a database file that another process holds a lock on.
+// database to MotherDuck over the `md:` protocol, using the DuckDB driver. It
+// is a no-op when no target database is configured and returns an error if the
+// upload fails, so callers can log and continue shutdown. The local usage
+// database must not be held open by the caller while this runs, since the
+// database/sql pool connection cannot be shared with the duckdb cli in that
+// way and the usage database is closed before the upload runs.
 func (s *tokenCounterRequestProcessor) uploadToMotherDuck(ctx context.Context, dbPath string) error {
 	if s.mdDatabase == "" {
 		s.logger.Debug("no motherduck database configured, skipping usage upload")
@@ -57,19 +55,25 @@ func (s *tokenCounterRequestProcessor) uploadToMotherDuck(ctx context.Context, d
 		slog.String("database", s.mdDatabase),
 		slog.String("db_path", dbPath),
 	)
-	statements := []string{
-		motherDuckInstall,
-		motherDuckLoad,
-		fmt.Sprintf(motherDuckAttach, s.mdDatabase, s.mdDatabase),
-		fmt.Sprintf(motherDuckCreateTable, s.mdDatabase),
-		fmt.Sprintf(motherDuckInsert, s.mdDatabase),
+	conn, err := s.store.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire usage database connection for motherduck upload: %w", err)
 	}
-	for _, stmt := range statements {
-		cmd := exec.CommandContext(ctx, "duckdb", dbPath, "-c", stmt)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("duckdb %q failed: %w: %s", stmt, err, strings.TrimSpace(string(out)))
-		}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, motherDuckInstall); err != nil {
+		return fmt.Errorf("failed to install the motherduck extension: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, motherDuckLoad); err != nil {
+		return fmt.Errorf("failed to load the motherduck extension: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckAttach, s.mdDatabase, s.mdDatabase)); err != nil {
+		return fmt.Errorf("failed to attach to motherduck via the md: protocol: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckCreateTable, s.mdDatabase)); err != nil {
+		return fmt.Errorf("failed to create motherduck token usage table: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckInsert, s.mdDatabase)); err != nil {
+		return fmt.Errorf("failed to insert token usage into motherduck: %w", err)
 	}
 	return nil
 }

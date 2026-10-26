@@ -189,6 +189,13 @@ func (s *UsageStore) DBPath() string {
 	return s.dbPath
 }
 
+// Conn returns a dedicated connection from the usage database connection
+// pool. Connection-local operations such as attaching databases must run on a
+// single connection, so callers should close the connection when done.
+func (s *UsageStore) Conn(ctx context.Context) (*sql.Conn, error) {
+	return s.conn.Conn(ctx)
+}
+
 // Query runs an arbitrary SQL query against the usage database and returns
 // the result rows as a list of JSON object records (one map per row, keyed by
 // column name).
