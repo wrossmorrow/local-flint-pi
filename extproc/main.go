@@ -45,6 +45,11 @@ func (s *tokenCounterRequestProcessor) GetOptions() *ep.ProcessingOptions {
 }
 
 func (s *tokenCounterRequestProcessor) ProcessRequestHeaders(ctx *ep.RequestContext, headers ep.AllHeaders) error {
+	s.logger.Info("request received",
+		slog.String("method", ctx.Method),
+		slog.String("path", ctx.FullPath),
+	)
+
 	// stamp the request-received timestamp; the SDK seeds the request context
 	// with the stream start time at the beginning of the request headers phase,
 	// so prefer it and fall back to the current time if the phase was skipped
@@ -197,7 +202,7 @@ func main() {
 	sopts.TerminationGracePeriodSeconds = 30
 	sopts.UnreadyPropagationDelaySeconds = 0
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	usageWALPath := os.Getenv("EXTOPROC_USAGE_WAL")
 	if usageWALPath == "" {
