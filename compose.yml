@@ -36,7 +36,7 @@ services:
       - "127.0.0.1:9091:9091"
     environment:
       EXTPROC_USAGE_DB: /data/usage.duckdb
-      EXTPROC_MOTHERDUCK_DATABASE: ${EXTPROC_MOTHERDUCK_DATABASE:-local_flint_pi}
+      EXTPROC_MOTHERDUCK_DATABASE: ${EXTPROC_MOTHERDUCK_DATABASE:-local_flint_usage}
       MOTHERDUCK_TOKEN: ${MOTHERDUCK_TOKEN:-}
     volumes:
       - extproc-usage-data:/data
