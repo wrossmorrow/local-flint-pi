@@ -4,7 +4,7 @@ FROM node:${NODE_TAG} AS agent
 ENV PAGER=cat GIT_PAGER=cat LESS=-FRX GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# add whatever toolchains your repos need: go, rust, python, etc.
+# add whatever toolchains your repos need: go, rust, python, java, etc.
 RUN apt-get update \
     && apt-get install -y git ripgrep curl wget fd-find \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
@@ -103,6 +103,60 @@ COPY --chmod=644 agents/rust.md /opt/agents/10-toolchain.md
 
 USER node
 WORKDIR /work
+
+# Java 21 toolchain: derives from the agent image and adds the JDK 21 on top.
+FROM agent AS java21
+USER root
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG JAVA_VERSION=21
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+      amd64) export JDK_ARCH=x64 ;; \
+      arm64) export JDK_ARCH=aarch64 ;; \
+      *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://api.adoptium.net/v3/binary/latest/${JAVA_VERSION}/ga/linux/${JDK_ARCH}/jdk/hotspot/normal/eclipse" \
+        -o /tmp/jdk.tar.gz \
+    && mkdir -p /opt/jdk \
+    && tar -xzf /tmp/jdk.tar.gz -C /opt/jdk --strip-components=1 \
+    && rm -rf /tmp/jdk.tar.gz
+
+ENV JAVA_HOME=/opt/jdk
+ENV PATH="/opt/jdk/bin:${PATH}"
+
+COPY --chmod=644 agents/java21.md /opt/agents/10-toolchain.md
+
+USER node
+WORKDIR /work
+
+ENTRYPOINT ["/opt/entrypoint.sh"]
+
+# Java 17 toolchain: derives from the agent image and adds the JDK 17 on top.
+FROM agent AS java17
+USER root
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG JAVA_VERSION=17
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+      amd64) export JDK_ARCH=x64 ;; \
+      arm64) export JDK_ARCH=aarch64 ;; \
+      *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://api.adoptium.net/v3/binary/latest/${JAVA_VERSION}/ga/linux/${JDK_ARCH}/jdk/hotspot/normal/eclipse" \
+        -o /tmp/jdk.tar.gz \
+    && mkdir -p /opt/jdk \
+    && tar -xzf /tmp/jdk.tar.gz -C /opt/jdk --strip-components=1 \
+    && rm -rf /tmp/jdk.tar.gz
+
+ENV JAVA_HOME=/opt/jdk
+ENV PATH="/opt/jdk/bin:${PATH}"
+
+COPY --chmod=644 agents/java17.md /opt/agents/10-toolchain.md
+
+USER node
+WORKDIR /work
+
+ENTRYPOINT ["/opt/entrypoint.sh"]
 
 # Final stage: the full agent image (default build target for bare docker build)
 FROM agent AS final
