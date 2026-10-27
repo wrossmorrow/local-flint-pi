@@ -71,3 +71,9 @@ query-usage-table query host="127.0.0.1" port="9091":
         -H 'content-type: application/json'\
         -H 'accept: application/json' \
         -d '{"query": "{{query}}"}' | jq .
+
+flush-usage-table host="127.0.0.1" port="9091":
+    curl -s -X POST http://{{host}}:{{port}}/flush \
+        -H 'content-type: application/json'\
+        -H 'accept: application/json' \
+        | jq .

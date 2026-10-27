@@ -317,7 +317,7 @@ func flushHandler(p *tokenCounterRequestProcessor) http.HandlerFunc {
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "error": "no results to to checkpoint"})
 			return
 		}
-		checkpoint, ok := results[0]["timestamp"]
+		checkpoint, ok := results[0]["timestamp"].(time.Time)
 		if !ok {
 			msg := "missing a checkpoint timestamp"
 			p.logger.Warn("failed to checkpoint", slog.String("error", msg))
@@ -334,7 +334,10 @@ func flushHandler(p *tokenCounterRequestProcessor) http.HandlerFunc {
 			return
 		}
 		// now we can clear before the timestamp
-		_, err = p.store.Query(fmt.Sprintf("DELETE FROM token_usage WHERE timestamp <= '%s';", checkpoint))
+		_, err = p.store.Query(fmt.Sprintf("DELETE FROM token_usage WHERE timestamp <= '%s';", checkpoint.Format(time.RFC3339Nano)))
+		if err != nil {
+			p.logger.Warn("failed to clear usage after upload", slog.String("error", err.Error()))
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
 	}
