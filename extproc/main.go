@@ -290,6 +290,56 @@ func queryHandler(s *UsageStore) http.HandlerFunc {
 	}
 }
 
+// flushHandler serves POST /flush, ignoring the JSON body and flushing
+// to motherduck (if configured); should also flush the local DB (locked).
+func flushHandler(p *tokenCounterRequestProcessor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		// optimistic concurrency: query the top response_id (PK) ordered by
+		// timestamp descending; then if upload successful, at least up to that
+		// record was synced and we can remove.
+		results, err := p.store.Query("SELECT timestamp FROM token_usage ORDER BY timestamp DESC LIMIT 1;")
+		if err != nil {
+			p.logger.Warn("failed to checkpoint", slog.String("error", err.Error()))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "error": err.Error()})
+			return
+		}
+		if len(results) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "error": "no results to to checkpoint"})
+			return
+		}
+		checkpoint, ok := results[0]["timestamp"]
+		if !ok {
+			msg := "missing a checkpoint timestamp"
+			p.logger.Warn("failed to checkpoint", slog.String("error", msg))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "error": msg})
+			return
+		}
+		if err := p.uploadToMotherDuck(context.Background(), p.store.DBPath()); err != nil {
+			p.logger.Warn("failed to upload token usage to motherduck", slog.String("error", err.Error()))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "error": err.Error()})
+			return
+		}
+		// now we can clear before the timestamp
+		_, err = p.store.Query(fmt.Sprintf("DELETE FROM token_usage WHERE timestamp <= '%s';", checkpoint))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+	}
+}
+
 func main() {
 	sopts := ep.NewDefaultServerOptions()
 	sopts.ExtProcPort = 50051
@@ -316,6 +366,7 @@ func main() {
 	// simple HTTP server for ad-hoc querying of the usage database
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("/query", queryHandler(store))
+	httpMux.HandleFunc("/flush", flushHandler(proc))
 	httpSrv := &http.Server{
 		Addr:    ":9091",
 		Handler: httpMux,
