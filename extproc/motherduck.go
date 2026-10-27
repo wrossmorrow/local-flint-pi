@@ -36,6 +36,8 @@ const motherDuckCreateTable = `
 		completion_tokens BIGINT,
 		total_tokens BIGINT,
 		cached_tokens BIGINT,
+		session_id VARCHAR,
+		session_name VARCHAR,
 		request_received_at TIMESTAMP,
 		first_response_at TIMESTAMP,
 		last_response_at TIMESTAMP,

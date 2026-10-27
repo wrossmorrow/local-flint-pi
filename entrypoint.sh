@@ -20,4 +20,5 @@ mkdir -p "${AGENT_DIR}"
 cat /opt/agents/*.md > "${AGENT_DIR}/AGENTS.md"
 
 cd /work/repo
-exec pi --extension /opt/rec/flint-pi.ts --provider rec --model flint
+SESSION_NAME=${SESSION_NAME:-${GITHUB_REPO_NAME}}
+exec pi --extension /opt/rec/flint-pi.ts --provider rec --model flint --name "${SESSION_NAME}"
