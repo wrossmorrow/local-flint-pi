@@ -1,10 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	_ "github.com/duckdb/duckdb-go/v2"
 )
 
 func TestUsageStoreRecordAndClose(t *testing.T) {
@@ -114,6 +117,62 @@ func TestUsageStoreConcurrentRecords(t *testing.T) {
 	}
 	if len(recs) != n {
 		t.Fatalf("Records() len = %d, want %d", len(recs), n)
+	}
+}
+
+func TestUsageStoreMigratesMissingColumns(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "usage.duckdb")
+	db, err := sql.Open("duckdb", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE token_usage (
+		timestamp TIMESTAMP,
+		response_id VARCHAR,
+		status VARCHAR,
+		prompt_tokens BIGINT,
+		completion_tokens BIGINT,
+		total_tokens BIGINT,
+		cached_tokens BIGINT,
+		request_received_at TIMESTAMP,
+		first_response_at TIMESTAMP,
+		last_response_at TIMESTAMP,
+		error_at TIMESTAMP,
+		first_response_latency_ms BIGINT,
+		total_response_latency_ms BIGINT
+	)`); err != nil {
+		t.Fatalf("CREATE TABLE token_usage failed: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO token_usage (timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens, request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms) VALUES (TIMESTAMP '2026-01-01 00:00:00', 'chatcmpl-old', 'ok', 3, 8, 11, 0, TIMESTAMP '2026-01-01 00:00:00', TIMESTAMP '2026-01-01 00:00:01', TIMESTAMP '2026-01-01 00:00:03', TIMESTAMP '2026-01-01 00:00:02', 1000, 3000)`); err != nil {
+		t.Fatalf("seed INSERT failed: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close() error = %v", err)
+	}
+
+	store, err := NewUsageStore(dbPath)
+	if err != nil {
+		t.Fatalf("NewUsageStore() error = %v", err)
+	}
+	defer store.Close()
+
+	recs, err := store.Records()
+	if err != nil {
+		t.Fatalf("Records() error = %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("Records() len = %d, want 1", len(recs))
+	}
+	if recs[0].ResponseID != "chatcmpl-old" {
+		t.Errorf("Records()[0].ResponseID = %q, want chatcmpl-old", recs[0].ResponseID)
+	}
+	if recs[0].SessionID != "" || recs[0].SessionName != "" {
+		t.Errorf("Records()[0].SessionID/SessionName = %q/%q, want empty for migrated row", recs[0].SessionID, recs[0].SessionName)
+	}
+	if recs[0].Tokens.PromptTokens != 3 || recs[0].Tokens.CompletionTokens != 8 || recs[0].Tokens.TotalTokens != 11 {
+		t.Errorf("Records()[0].Tokens = %+v, want prompt=3 completion=8 total=11", recs[0].Tokens)
 	}
 }
 

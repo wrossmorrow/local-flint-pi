@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	_ "github.com/duckdb/duckdb-go/v2"
@@ -29,6 +30,74 @@ type TokenUsage struct {
 	CompletionTokens int64 `json:"completion"`
 	TotalTokens      int64 `json:"total"`
 	CachedTokens     int64 `json:"cached"`
+}
+
+// tokenUsageColumn describes one expected column of the token_usage table, in
+// tabular column order, with its DuckDB type and default value. Columns that are
+// missing from an existing usage database are added by migrateTokenUsageSchema.
+type tokenUsageColumn struct {
+	Name    string
+	Type    string
+	Default string
+}
+
+// tokenUsageColumns lists the expected columns of the token_usage table, in
+// tabular column order, with their DuckDB types and defaults for columns that
+// may be added later to an existing usage database.
+var tokenUsageColumns = []tokenUsageColumn{
+	{Name: "timestamp", Type: "TIMESTAMP"},
+	{Name: "response_id", Type: "VARCHAR"},
+	{Name: "status", Type: "VARCHAR"},
+	{Name: "prompt_tokens", Type: "BIGINT", Default: "0"},
+	{Name: "completion_tokens", Type: "BIGINT", Default: "0"},
+	{Name: "total_tokens", Type: "BIGINT", Default: "0"},
+	{Name: "cached_tokens", Type: "BIGINT", Default: "0"},
+	{Name: "session_id", Type: "VARCHAR", Default: "''"},
+	{Name: "session_name", Type: "VARCHAR", Default: "''"},
+	{Name: "request_received_at", Type: "TIMESTAMP"},
+	{Name: "first_response_at", Type: "TIMESTAMP"},
+	{Name: "last_response_at", Type: "TIMESTAMP"},
+	{Name: "error_at", Type: "TIMESTAMP"},
+	{Name: "first_response_latency_ms", Type: "BIGINT", Default: "0"},
+	{Name: "total_response_latency_ms", Type: "BIGINT", Default: "0"},
+}
+
+// migrateTokenUsageSchema adds token_usage columns that are missing from an
+// existing usage database, since CREATE TABLE IF NOT EXISTS does not add columns
+// to tables that already exist. Missing columns are added with their defaults so
+// existing rows remain readable. It is a no-op for a freshly created table.
+func migrateTokenUsageSchema(s *UsageStore) error {
+	rows, err := s.conn.Query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'token_usage'`)
+	if err != nil {
+		return fmt.Errorf("failed to query token_usage columns: %w", err)
+	}
+	defer rows.Close()
+
+	have := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return fmt.Errorf("failed to scan token_usage column name: %w", err)
+		}
+		have[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate token_usage columns: %w", err)
+	}
+
+	for _, c := range tokenUsageColumns {
+		if have[c.Name] {
+			continue
+		}
+		ddl := fmt.Sprintf(`ALTER TABLE token_usage ADD COLUMN "%s" %s`, c.Name, c.Type)
+		if c.Default != "" {
+			ddl += fmt.Sprintf(" DEFAULT %s", c.Default)
+		}
+		if _, err := s.conn.Exec(ddl); err != nil {
+			return fmt.Errorf("failed to add missing token_usage column %q: %w", c.Name, err)
+		}
+	}
+	return nil
 }
 
 // tokenUsageRow mirrors a single row of the token_usage table as scanned out
@@ -86,6 +155,10 @@ func NewUsageStore(dbPath string) (*UsageStore, error) {
 		first_response_latency_ms BIGINT,
 		total_response_latency_ms BIGINT
 	)`); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := migrateTokenUsageSchema(&UsageStore{conn: db, dbPath: dbPath}); err != nil {
 		db.Close()
 		return nil, err
 	}
