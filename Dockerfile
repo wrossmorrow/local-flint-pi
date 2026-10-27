@@ -6,7 +6,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # add whatever toolchains your repos need: go, rust, python, java, etc.
 RUN apt-get update \
-    && apt-get install -y git ripgrep curl wget fd-find \
+    && apt-get install -y git ripgrep curl wget fd-find unzip \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
@@ -124,6 +124,18 @@ RUN case "${TARGETARCH}" in \
 ENV JAVA_HOME=/opt/jdk
 ENV PATH="/opt/jdk/bin:${PATH}"
 
+# gradle: binary distribution for JVM-based repos (e.g. envoy-extproc-sdk-java);
+# installed locally so the gradle wrapper can resolve a distribution without
+# relying solely on the network at first run
+ARG GRADLE_VERSION=8.0.2
+RUN curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip \
+    && unzip -q /tmp/gradle.zip -d /opt \
+    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle \
+    && rm -f /tmp/gradle.zip
+
+ENV GRADLE_HOME=/opt/gradle-${GRADLE_VERSION}
+ENV PATH="/opt/gradle-${GRADLE_VERSION}/bin:${PATH}"
+
 COPY --chmod=644 agents/java21.md /opt/agents/10-toolchain.md
 
 USER node
@@ -150,6 +162,18 @@ RUN case "${TARGETARCH}" in \
 
 ENV JAVA_HOME=/opt/jdk
 ENV PATH="/opt/jdk/bin:${PATH}"
+
+# gradle: binary distribution for JVM-based repos (e.g. envoy-extproc-sdk-java);
+# installed locally so the gradle wrapper can resolve a distribution without
+# relying solely on the network at first run
+ARG GRADLE_VERSION=8.0.2
+RUN curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip \
+    && unzip -q /tmp/gradle.zip -d /opt \
+    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle \
+    && rm -f /tmp/gradle.zip
+
+ENV GRADLE_HOME=/opt/gradle-${GRADLE_VERSION}
+ENV PATH="/opt/gradle-${GRADLE_VERSION}/bin:${PATH}"
 
 COPY --chmod=644 agents/java17.md /opt/agents/10-toolchain.md
 
