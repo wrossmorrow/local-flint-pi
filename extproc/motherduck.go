@@ -22,7 +22,7 @@ const motherDuckLoad = "LOAD md;"
 // motherDuckAttach attaches the target MotherDuck database using the `md:`
 // protocol. The database name is quoted, since MotherDuck database names may
 // contain characters (such as hyphens) that are not valid bare identifiers.
-const motherDuckAttach = "ATTACH 'md:%s' AS \"%s\";"
+const motherDuckAttach = "ATTACH IF NOT EXISTS 'md:%s' AS \"%s\";"
 
 // motherDuckCreateTable creates the token usage table in the target MotherDuck
 // database if it does not yet exist, with the same schema as the local usage
