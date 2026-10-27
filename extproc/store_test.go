@@ -23,7 +23,7 @@ func TestUsageStoreRecordAndClose(t *testing.T) {
 		LastResponseAt:    time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC),
 	}
 	latency := timing.Latency()
-	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11}, "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11", "ok", timing, latency); err != nil {
+	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11, SessionID: "01a17b93-cb59-77ce-9aaf-c9a29a959087", SessionName: "wrossmorrow/local-flint-pi"}, "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11", "ok", timing, latency); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
 
@@ -36,6 +36,12 @@ func TestUsageStoreRecordAndClose(t *testing.T) {
 	}
 	if recs[0].ResponseID != "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11" {
 		t.Errorf("Records()[0].ResponseID = %q, want chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11", recs[0].ResponseID)
+	}
+	if recs[0].SessionID != "01a17b93-cb59-77ce-9aaf-c9a29a959087" {
+		t.Errorf("Records()[0].SessionID = %q, want 01a17b93-cb59-77ce-9aaf-c9a29a959087", recs[0].SessionID)
+	}
+	if recs[0].SessionName != "wrossmorrow/local-flint-pi" {
+		t.Errorf("Records()[0].SessionName = %q, want wrossmorrow/local-flint-pi", recs[0].SessionName)
 	}
 	if recs[0].Tokens.PromptTokens != 3 || recs[0].Tokens.CompletionTokens != 8 || recs[0].Tokens.TotalTokens != 11 {
 		t.Errorf("Records()[0].Tokens = %+v, want prompt=3 completion=8 total=11", recs[0].Tokens)
@@ -126,7 +132,7 @@ func TestUsageStoreQuery(t *testing.T) {
 		LastResponseAt:    time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC),
 	}
 	latency := timing.Latency()
-	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11}, "chatcmpl-query-1", "ok", timing, latency); err != nil {
+	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11, SessionID: "01a17b93-cb59-77ce-9aaf-c9a29a959087", SessionName: "wrossmorrow/local-flint-pi"}, "chatcmpl-query-1", "ok", timing, latency); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
 
@@ -139,5 +145,11 @@ func TestUsageStoreQuery(t *testing.T) {
 	}
 	if recs[0]["response_id"] != "chatcmpl-query-1" {
 		t.Errorf("Query()[0][response_id] = %#v, want chatcmpl-query-1", recs[0]["response_id"])
+	}
+	if recs[0]["session_id"] != "01a17b93-cb59-77ce-9aaf-c9a29a959087" {
+		t.Errorf("Query()[0][session_id] = %#v, want 01a17b93-cb59-77ce-9aaf-c9a29a959087", recs[0]["session_id"])
+	}
+	if recs[0]["session_name"] != "wrossmorrow/local-flint-pi" {
+		t.Errorf("Query()[0][session_name] = %#v, want wrossmorrow/local-flint-pi", recs[0]["session_name"])
 	}
 }

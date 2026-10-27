@@ -28,7 +28,16 @@ const (
 	responseBodyKey   = "responseBodyBuf"
 	responseUsageKey  = "responseUsage"
 	responseTimingKey = "responseTiming"
+	sessionKey        = "session"
 )
+
+// sessionContext holds the session attribution headers captured during the
+// request headers phase, retrieved during response finalization to stamp the
+// finalized usage record with the session that produced it.
+type sessionContext struct {
+	SessionID   string
+	SessionName string
+}
 
 // tokenCounterRequestProcessor is the Envoy external processor implementation.
 //
@@ -67,6 +76,16 @@ func (s *tokenCounterRequestProcessor) ProcessRequestHeaders(ctx *ep.RequestCont
 			slog.String("x-session-id", sessionID),
 			slog.String("x-session-name", sessionName),
 		)
+	}
+
+	// capture the session attribution headers on the per-stream context, so
+	// the finalized usage record can be stamped with the session that produced it
+	session := &sessionContext{
+		SessionID:   sessionID,
+		SessionName: sessionName,
+	}
+	if err := ctx.SetValue(sessionKey, session); err != nil {
+		return err
 	}
 
 	// stamp the request-received timestamp; the SDK seeds the request context
@@ -161,6 +180,18 @@ func (s *tokenCounterRequestProcessor) finalizeResponse(ctx *ep.RequestContext, 
 	if err := ctx.SetValue(responseUsageKey, &usage.Usage); err != nil {
 		return err
 	}
+
+	session, err := ctx.GetValue(sessionKey)
+	if err != nil {
+		return err
+	}
+	sess, ok := session.(*sessionContext)
+	if !ok {
+		return fmt.Errorf("expected *sessionContext in request context, got %T", session)
+	}
+	usage.Usage.SessionID = sess.SessionID
+	usage.Usage.SessionName = sess.SessionName
+
 	if err := s.store.Record(&usage.Usage, usage.ID, status, *timing, latency); err != nil {
 		s.logger.Warn("failed to write token usage to wal", slog.String("error", err.Error()))
 	}

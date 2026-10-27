@@ -12,12 +12,14 @@ import (
 // UsageRecord is a timestamped token-usage observation as stored in the
 // tabular usage database.
 type UsageRecord struct {
-	Timestamp  time.Time       `json:"timestamp"`
-	ResponseID string          `json:"response_id,omitempty"`
-	Status     string          `json:"status,omitempty"`
-	Tokens     TokenUsage      `json:"tokens"`
-	Timing     ResponseTiming  `json:"timing"`
-	Latency    ResponseLatency `json:"latency"`
+	Timestamp   time.Time       `json:"timestamp"`
+	ResponseID  string          `json:"response_id,omitempty"`
+	Status      string          `json:"status,omitempty"`
+	SessionID   string          `json:"session_id,omitempty"`
+	SessionName string          `json:"session_name,omitempty"`
+	Tokens      TokenUsage      `json:"tokens"`
+	Timing      ResponseTiming  `json:"timing"`
+	Latency     ResponseLatency `json:"latency"`
 }
 
 // TokenUsage is the token accounting nested under the "tokens" key of a usage
@@ -39,6 +41,8 @@ type tokenUsageRow struct {
 	CompletionTokens       int64
 	TotalTokens            int64
 	CachedTokens           int64
+	SessionID              string
+	SessionName            string
 	RequestReceivedAt      time.Time
 	FirstResponseAt        time.Time
 	LastResponseAt         time.Time
@@ -73,6 +77,8 @@ func NewUsageStore(dbPath string) (*UsageStore, error) {
 		completion_tokens BIGINT,
 		total_tokens BIGINT,
 		cached_tokens BIGINT,
+		session_id VARCHAR,
+		session_name VARCHAR,
 		request_received_at TIMESTAMP,
 		first_response_at TIMESTAMP,
 		last_response_at TIMESTAMP,
@@ -94,9 +100,9 @@ func (s *UsageStore) Record(u *Usage, responseID string, status string, timing R
 	ctx := context.Background()
 	_, err := s.conn.ExecContext(ctx, `
 		INSERT INTO token_usage (
-			timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens,
+			timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens, session_id, session_name,
 			request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		time.Now().UTC(),
 		responseID,
@@ -105,6 +111,8 @@ func (s *UsageStore) Record(u *Usage, responseID string, status string, timing R
 		u.CompletionTokens,
 		u.TotalTokens,
 		u.PromptTokensDetails.CachedTokens,
+		u.SessionID,
+		u.SessionName,
 		timing.RequestReceivedAt,
 		timing.FirstResponseAt,
 		timing.LastResponseAt,
@@ -121,7 +129,7 @@ func (s *UsageStore) Record(u *Usage, responseID string, status string, timing R
 // Records reads back all records in the usage database, in write order.
 func (s *UsageStore) Records() ([]UsageRecord, error) {
 	rows, err := s.conn.Query(`
-		SELECT timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens,
+		SELECT timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens, session_id, session_name,
 			request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
 		FROM token_usage
 		ORDER BY timestamp
@@ -142,6 +150,8 @@ func (s *UsageStore) Records() ([]UsageRecord, error) {
 			&r.CompletionTokens,
 			&r.TotalTokens,
 			&r.CachedTokens,
+			&r.SessionID,
+			&r.SessionName,
 			&r.RequestReceivedAt,
 			&r.FirstResponseAt,
 			&r.LastResponseAt,
@@ -152,9 +162,11 @@ func (s *UsageStore) Records() ([]UsageRecord, error) {
 			return nil, err
 		}
 		recs = append(recs, UsageRecord{
-			Timestamp:  r.Timestamp,
-			ResponseID: r.ResponseID,
-			Status:     r.Status,
+			Timestamp:   r.Timestamp,
+			ResponseID:  r.ResponseID,
+			Status:      r.Status,
+			SessionID:   r.SessionID,
+			SessionName: r.SessionName,
 			Tokens: TokenUsage{
 				PromptTokens:     r.PromptTokens,
 				CompletionTokens: r.CompletionTokens,

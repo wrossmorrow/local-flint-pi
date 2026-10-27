@@ -12,8 +12,12 @@ type PromptTokensDetails struct {
 	CachedTokens int64 `json:"cached_tokens"`
 }
 
-// Usage holds the token accounting reported by a model in its response.
+// Usage holds the token accounting reported by a model in its response, plus
+// the session attribution captured for the request via the x-session-id and
+// x-session-name headers.
 type Usage struct {
+	SessionID           string              `json:"session_id,omitempty"`
+	SessionName         string              `json:"session_name,omitempty"`
 	PromptTokens        int64               `json:"prompt_tokens"`
 	CompletionTokens    int64               `json:"completion_tokens"`
 	TotalTokens         int64               `json:"total_tokens"`
