@@ -94,6 +94,12 @@ services:
       REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11005/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-32768}}'
       PI_CODING_AGENT_DIR: /home/node/.pi
       PI_SKIP_VERSION_CHECK: "1"
+      # pass the sandbox egress proxy to the JVM (and thus the gradle wrapper / gradle
+      # http client) via system properties; no_proxy for local/internal hosts
+      JAVA_TOOL_OPTIONS: >-
+        -Dhttp.proxyHost=proxy -Dhttp.proxyPort=3128
+        -Dhttps.proxyHost=proxy -Dhttps.proxyPort=3128
+        -Dhttp.nonProxyHosts=localhost|127.0.0.1|model-relay
     volumes:
       - gh-token:/tokens:ro
       - pi-state:/home/node/.pi
