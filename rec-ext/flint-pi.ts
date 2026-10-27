@@ -5,7 +5,7 @@
  * model proxy / extproc layer can attribute usage, latency, and token counts to
  * a session without parsing the request body.
  *
- * - `x-session-id`: derived session id (session-name slug + short base id)
+ * - `x-session-id`: session UUID extracted from the session file name
  * - `x-session-name`: human-readable session name, when set
  *
  * The session id is resolved on every provider request, so renames via pi's
@@ -21,45 +21,24 @@ import { createRecStream } from './pi-transport.mjs';
 export default function (pi: ExtensionAPI) {
 
   // Stable unique base derived from the session file name for this session lifetime.
-  // Combined with the human-readable name (if set) to build the final session id.
+  // Holds the full "<ISO-timestamp>_<uuid>" session file stem, or an ephemeral
+  // session id when the session was started with --no-session.
   let baseSessionId: string | null = null;
 
   /**
-   * Converts a human-readable session name into an URL/ID-safe slug.
-   * e.g. "Refactor auth module!" -> "refactor-auth-module"
-   */
-  function slugify(text: string): string {
-    return text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-") // non-alphanumeric runs -> single hyphen
-      .replace(/^-+|-+$/g, "") // strip leading/trailing hyphens
-      .slice(0, 50); // cap length to keep ids readable
-  }
-
-  /**
-   * Builds the session id to send to the model. If the user has named the
-   * session, produces "<slug>-<short-base-id>" for human-readable grouping
-   * whilst remaining unique across same-named sessions. Otherwise returns the
-   * short uuid portion of the base id. In both cases the id is derived from the
-   * UUID portion of the base session id, never from the raw base id.
+   * Builds the session id to send to the model. Returns the UUID extracted
+   * from the session file name, e.g. "01a17b77-a54d-7692-b04a-a94c16ae5d16",
+   * falling back to the base id when no UUID can be extracted.
    */
   function buildSessionId(): string | null {
     if (!baseSessionId) return null;
 
-    const uuidPart = baseSessionId.split("_")[1] ?? baseSessionId;
-    const shortId = uuidPart.replace(/-/g, "").slice(0, 8);
-    const name = pi.getSessionName();
-    if (name) {
-      const slug = slugify(name);
-      // Session filenames are "<ISO-timestamp>_<uuid>" - extract the uuid portion
-      // for the short id so we don't bleed timestamp digits/hyphens into the slug.
-      // e.g. "2026-05-06T12-00-00-000Z_019dbbc7-c8c5-748c-8710-3fdf6fefc083"
-      //   -> shortId = "019dbbc7"
-      return `${slug}-${shortId}`;
-    }
-
-    // no display name: just use the UUID portion of the session id
-    return shortId;
+    // Session filenames are "<ISO-timestamp>_<uuid>" - extract the uuid portion
+    // for the session id, never from the raw base id.
+    // e.g. "2026-10-27T03-46-41-101Z_01a17b77-a54d-7692-b04a-a94c16ae5d16"
+    //   -> "01a17b77-a54d-7692-b04a-a94c16ae5d16"
+    const uuid = baseSessionId.split("_")[1] ?? baseSessionId;
+    return uuid;
   }
 
   // Establish the base session ID whenever the session starts, changes, or reloads
