@@ -40,11 +40,14 @@ export default function (pi: ExtensionAPI) {
    * Builds the session id to send to the model. If the user has named the
    * session, produces "<slug>-<short-base-id>" for human-readable grouping
    * whilst remaining unique across same-named sessions. Otherwise returns the
-   * raw base id.
+   * short uuid portion of the base id. In both cases the id is derived from the
+   * UUID portion of the base session id, never from the raw base id.
    */
   function buildSessionId(): string | null {
     if (!baseSessionId) return null;
 
+    const uuidPart = baseSessionId.split("_")[1] ?? baseSessionId;
+    const shortId = uuidPart.replace(/-/g, "").slice(0, 8);
     const name = pi.getSessionName();
     if (name) {
       const slug = slugify(name);
@@ -52,12 +55,11 @@ export default function (pi: ExtensionAPI) {
       // for the short id so we don't bleed timestamp digits/hyphens into the slug.
       // e.g. "2026-05-06T12-00-00-000Z_019dbbc7-c8c5-748c-8710-3fdf6fefc083"
       //   -> shortId = "019dbbc7"
-      const uuidPart = baseSessionId.split("_")[1] ?? baseSessionId;
-      const shortId = uuidPart.replace(/-/g, "").slice(0, 8);
       return `${slug}-${shortId}`;
     }
 
-    return baseSessionId;
+    // no display name: just use the UUID portion of the session id
+    return shortId;
   }
 
   // Establish the base session ID whenever the session starts, changes, or reloads
