@@ -18,6 +18,8 @@ Build a toolchain-specific image with `just build <toolchain>`, or directly via 
 
 The agent container runs the pi web interface (`web/`): a small Go service that spawns `pi --mode rpc` ([RPC docs](https://pi.dev/docs/latest/rpc)) and serves a browser UI over HTTP + server-sent events at `http://127.0.0.1:8787` (override with `PI_WEB_PORT`).
 
+<img width="1408" height="991" alt="image" src="https://github.com/user-attachments/assets/f0033a3a-d9bf-45a7-b625-212ba111f2d5" />
+
 The UI is styled after pi's terminal interface: a single transcript column, an editor whose border color tracks the thinking level, and pi's footer (cwd/branch, session, token and context usage, model, thinking level). Tool calls render as one-line rows (`bash $ go test ./...`, `read path:1-40`, `edit path  +2 -1`) that expand on click; thinking is collapsed to a one-liner. The page rebuilds itself from `get_messages` when it (re)connects, so reloading mid-run or opening a second tab is safe.
 
 | key | action |
