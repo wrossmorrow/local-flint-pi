@@ -50,10 +50,21 @@ const motherDuckCreateTable = `
 // motherDuckInsert inserts the rows of the local token usage table that are
 // not yet present in the target MotherDuck token usage table into the target
 // table, skipping rows whose response_id already exists there, so repeated
-// uploads of the same accumulated usage do not duplicate data.
+// uploads of the same accumulated usage do not duplicate data. The column
+// lists are spelled out explicitly rather than using SELECT *, since the
+// insert maps source columns to target columns positionally and the local and
+// target token_usage tables may have drifted in column order (for example a
+// pre-session-attribution target table has the timing columns ahead of the
+// session columns), which would misplace values and fail the insert.
 const motherDuckInsert = `
-	INSERT INTO "%s".token_usage
-	SELECT * FROM token_usage AS l
+	INSERT INTO "%s".token_usage (
+		timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens, session_id, session_name,
+		request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
+	)
+	SELECT
+		timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens, session_id, session_name,
+		request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
+	FROM token_usage AS l
 	WHERE NOT EXISTS (
 		SELECT 1 FROM "%s".token_usage AS t
 		WHERE t.response_id = l.response_id
