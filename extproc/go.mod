@@ -4,7 +4,8 @@ go 1.25.0
 
 require (
 	github.com/duckdb/duckdb-go/v2 v2.10506.0
-	github.com/wrossmorrow/envoy-extproc-sdk-go v0.1.2
+	github.com/wrossmorrow/envoy-extproc-sdk-go v0.2.1
+	google.golang.org/grpc v1.83.0
 )
 
 require (
@@ -44,7 +45,6 @@ require (
 	golang.org/x/tools v0.47.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260807164820-c8921c73eeea // indirect
-	google.golang.org/grpc v1.83.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
