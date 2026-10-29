@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -57,31 +58,91 @@ func NewServer(rpc *RpcClient, allowedHosts []string, logoPath string, uploader 
 	}
 	s := &Server{rpc: rpc, allowedHosts: hosts, logoPath: logoPath}
 	if uploader == nil {
-		uploader = newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil })
+		uploader = newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil })
 	}
 	s.uploader = uploader
 	return s
 }
 
 // SessionSource returns the function the session uploader uses to resolve the
-// current session file. The server owns the RpcClient, so it is the natural
-// source of truth for which session is live.
-func (s *Server) SessionSource() func(context.Context) (string, error) {
-	return func(ctx context.Context) (string, error) { return s.SessionPath(ctx) }
+// live session. The server owns the RpcClient, so it is the natural source of
+// truth for which session is live.
+func (s *Server) SessionSource() func(context.Context) (*sessionRef, error) {
+	return func(ctx context.Context) (*sessionRef, error) { return s.SessionRef(ctx) }
 }
 
-// SessionPath resolves the current pi session file, which is what the session
-// uploader ships to object storage.
-func (s *Server) SessionPath(ctx context.Context) (string, error) {
-	data, err := s.rpc.State(ctx)
+// SessionRef resolves the live pi session the uploader ships: its file path,
+// the get_state / get_session_stats snapshots, and the static session
+// attributes (repo, agent environment, agent identity, client host).
+func (s *Server) SessionRef(ctx context.Context) (*sessionRef, error) {
+	state, err := s.rpc.State(ctx)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	p, _ := data["sessionFile"].(string)
+	p, _ := state["sessionFile"].(string)
 	if p == "" {
-		return "", fmt.Errorf("pi reported no session file")
+		return nil, fmt.Errorf("pi reported no session file")
 	}
-	return p, nil
+	cwd, wdErr := os.Getwd()
+	if wdErr != nil {
+		cwd = ""
+	}
+	ref := &sessionRef{
+		Path:             p,
+		State:            state,
+		Stats:            map[string]any{},
+		Repo:             gitRepo(cwd),
+		AgentEnvironment: agentEnvironment(),
+		AgentIdentity:    os.Getenv("GITHUB_APP_USER"),
+		ClientHost:       clientHost(),
+	}
+	if stats, err := s.rpc.Stats(ctx); err == nil {
+		ref.Stats = stats
+	}
+	return ref, nil
+}
+
+// gitRepo returns the origin remote (owner/name) of the git repo at dir, if
+// any.
+func gitRepo(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "remote", "get-url", "origin").Output()
+	if err != nil {
+		return ""
+	}
+	u := strings.TrimSpace(string(out))
+	u = strings.TrimSuffix(u, ".git")
+	if i := strings.LastIndex(u, "/"); i >= 0 {
+		return u[i+1:]
+	}
+	return u
+}
+
+// agentEnvironment collects the agent runtime details (no secrets) for the
+// session metadata. Values are supplied via env and are optional.
+func agentEnvironment() map[string]any {
+	env := map[string]any{}
+	if v := os.Getenv("PI_WEB_AGENT_TOOLCHAIN"); v != "" {
+		env["toolchain"] = v
+	}
+	if v := os.Getenv("PI_WEB_AGENT_IMAGE_DIGEST"); v != "" {
+		env["imageDigest"] = v
+	}
+	if v := os.Getenv("PI_WEB_AGENT_PI_VERSION"); v != "" {
+		env["piVersion"] = v
+	}
+	if v := os.Getenv("PI_WEB_AGENT_EXTENSION_VERSIONS"); v != "" {
+		env["extensionVersions"] = v
+	}
+	return env
+}
+
+// clientHost returns the hostname of this machine, used as a coarse client
+// identifier in the session metadata.
+func clientHost() string {
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return h
+	}
+	return "unknown"
 }
 
 // Routes returns the HTTP handler for the web interface.
@@ -230,12 +291,12 @@ func (s *Server) handleFlush(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), defaultCommandTimeout)
 	defer cancel()
-	path, err := s.SessionPath(ctx)
+	ref, err := s.SessionRef(ctx)
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"success": false, "error": "session unavailable: " + err.Error()})
 		return
 	}
-	st, err := s.uploader.Flush(ctx, path)
+	st, err := s.uploader.Flush(ctx, ref)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"success": false, "error": err.Error()})
 		return

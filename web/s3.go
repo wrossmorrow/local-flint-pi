@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -15,6 +16,8 @@ import (
 type sessionStore interface {
 	// Put writes data to key with the given content type.
 	Put(ctx context.Context, key string, data []byte, contentType string) error
+	// Get reads the object at key, if present.
+	Get(ctx context.Context, key string) ([]byte, error)
 }
 
 // staticCredentials is a CredentialsProvider that always returns the given
@@ -65,4 +68,16 @@ func (s *s3Store) Put(ctx context.Context, key string, data []byte, contentType 
 		return fmt.Errorf("s3 put %s: %w", key, err)
 	}
 	return nil
+}
+
+func (s *s3Store) Get(ctx context.Context, key string) ([]byte, error) {
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("s3 get %s: %w", key, err)
+	}
+	defer func() { _ = out.Body.Close() }()
+	return io.ReadAll(out.Body)
 }

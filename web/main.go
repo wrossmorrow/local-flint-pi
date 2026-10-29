@@ -119,7 +119,7 @@ func main() {
 	}
 	server = NewServer(rpc, cfg.allowedHosts, cfg.logoPath, uploader)
 	if uploader != nil {
-		uploader.source = func(ctx context.Context) (string, error) { return server.SessionPath(ctx) }
+		uploader.source = func(ctx context.Context) (*sessionRef, error) { return server.SessionRef(ctx) }
 		uploader.Start(context.Background())
 	}
 
@@ -137,13 +137,13 @@ func main() {
 			log.Printf("http shutdown error: %v", err)
 		}
 	}
-	closeSessions := func(ctx context.Context) {
+	closeSessions := func(ctx context.Context, endReason string) {
 		if uploader == nil {
 			return
 		}
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		if err := uploader.Close(ctx); err != nil {
+		if err := uploader.Close(ctx, endReason); err != nil {
 			log.Printf("session upload close error: %v", err)
 		}
 	}
@@ -151,11 +151,16 @@ func main() {
 	// Shut the HTTP server down when the pi child process exits, and close out
 	// any in-flight session uploads first.
 	go func() {
-		if err := rpc.Wait(); err != nil {
+		err := rpc.Wait()
+		if err != nil {
 			log.Printf("pi rpc process exited: %v", err)
 		}
+		endReason := "closed"
+		if err != nil {
+			endReason = "crashed"
+		}
 		shutdownHTTP(context.Background())
-		closeSessions(context.Background())
+		closeSessions(context.Background(), endReason)
 	}()
 
 	sigCh := make(chan os.Signal, 1)
@@ -164,7 +169,7 @@ func main() {
 		sig := <-sigCh
 		log.Printf("shutting down: %v", sig)
 		shutdownHTTP(context.Background())
-		closeSessions(context.Background())
+		closeSessions(context.Background(), "closed")
 		if err := rpc.Stop(); err != nil {
 			log.Printf("failed to stop pi rpc child: %v", err)
 		}

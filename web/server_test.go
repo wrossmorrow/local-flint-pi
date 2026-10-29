@@ -95,7 +95,7 @@ func TestRememberReplaysQueueUpdate(t *testing.T) {
 }
 
 func TestGuard(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), []string{"devbox.local"}, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil }))
+	s := NewServer(NewRpcClient("", nil, nil), []string{"devbox.local"}, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
 	h := s.guard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 
 	cases := []struct {
@@ -130,7 +130,7 @@ func TestGuard(t *testing.T) {
 }
 
 func TestExtensionUIUnknownDialogIs404(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil }))
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
 	r := httptest.NewRequest("POST", "/api/extension-ui/response", strings.NewReader(`{"id":"nope","value":"x"}`))
 	r.Host = "localhost"
 	r.Header.Set("Content-Type", "application/json")
@@ -142,7 +142,7 @@ func TestExtensionUIUnknownDialogIs404(t *testing.T) {
 }
 
 func TestCommandAllowlist(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil }))
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
 	r := httptest.NewRequest("POST", "/api/cmd", strings.NewReader(`{"type":"export_html","outputPath":"/etc/x"}`))
 	r.Host = "localhost"
 	r.Header.Set("Content-Type", "application/json")
@@ -154,7 +154,7 @@ func TestCommandAllowlist(t *testing.T) {
 }
 
 func TestFlushEndpointRequiresSession(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil }))
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
 	r := httptest.NewRequest("POST", "/api/flush", strings.NewReader("{}"))
 	r.Host = "localhost"
 	r.Header.Set("Content-Type", "application/json")

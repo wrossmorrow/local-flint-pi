@@ -410,6 +410,25 @@ func (c *RpcClient) State(ctx context.Context) (map[string]any, error) {
 	return data, nil
 }
 
+// Stats sends the get_session_stats command and returns the response data
+// (token and message totals).
+func (c *RpcClient) Stats(ctx context.Context) (map[string]any, error) {
+	res, err := c.Send(ctx, map[string]any{"type": "get_session_stats"})
+	if err != nil {
+		return nil, err
+	}
+	if !res.Success {
+		return nil, fmt.Errorf("get_session_stats failed: %s", res.Error)
+	}
+	var data map[string]any
+	if len(res.Data) > 0 {
+		if err := json.Unmarshal(res.Data, &data); err != nil {
+			return nil, fmt.Errorf("get_session_stats: bad data: %w", err)
+		}
+	}
+	return data, nil
+}
+
 // DialogOpen reports whether a dialog is currently pending for `id`.
 func (c *RpcClient) DialogOpen(id string) bool {
 	c.subsMu.Lock()

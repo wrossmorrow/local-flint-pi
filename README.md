@@ -40,6 +40,8 @@ API (all JSON; writes require `Content-Type: application/json`):
 
 Session files are uploaded to S3 (`sessions/<session-id>/part-<offset>.jsonl.gz`, gzipped JSONL) while the agent runs. The uploader periodically (default every 30s, `PI_WEB_S3_FLUSH_INTERVAL_SECONDS`) ships content the pi child has appended to its session file since the last shipped offset; a pending batch larger than `PI_WEB_S3_MAX_PART_BYTES` (default 5MB) is shipped immediately. Closing a session (flush endpoint, shutdown, or process exit) ships the rest and writes a `sessions/<session-id>/_closed` marker with the final offset, part count, content hash and status (`ok` or `error`).
 
+A `sessions/<session-id>/metadata.json` object is written when a session is first seen and updated at close. It carries the session id, name, repo, agent environment (toolchain/image/pi version/extension versions, no secrets), model config (provider/model/context window/max tokens, no secrets), agent identity (GitHub App user), client host, plus the close-time values: current session name, `ended_at`, `end_reason` (`closed` / `abandoned` / `crashed`) and final totals from `get_session_stats` (tokens, tool calls, message counts).
+
 S3 is optional: when no bucket is configured (`AWS_S3_BUCKET_NAME`, fallback `WEB_AWS_S3_BUCKET_NAME`) the upload flow is inert. Credentials come from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (fallbacks `WEB_AWS_ACCESS_KEY_ID` / `WEB_AWS_SECRET_ACCESS_KEY`) and the region from `AWS_REGION` (fallback `WEB_AWS_REGION`, default `us-east-1`).
 
 Requests are only accepted with a loopback `Host` (add others with `PI_WEB_ALLOWED_HOSTS=host1,host2`) and a matching `Origin`, so other websites open in the browser can't drive the agent (DNS rebinding / cross-site POSTs).

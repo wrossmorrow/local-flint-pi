@@ -52,6 +52,16 @@ func (f *fakeStore) get(key string) ([]byte, string, bool) {
 	return b, ct, ok && ok2
 }
 
+func (f *fakeStore) Get(_ context.Context, key string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	b, ok := f.puts[key]
+	if !ok {
+		return nil, errors.New("not found")
+	}
+	return b, nil
+}
+
 func (f *fakeStore) keys() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -101,8 +111,8 @@ func TestSessionUploaderFlushShipsPart(t *testing.T) {
 	content := []byte("{\"type\":\"message_start\",\"message\":{\"role\":\"user\"}}\n{\"type\":\"message_end\",\"message\":{\"role\":\"user\"}}\n")
 	path := writeSessionFile(t, testSessionID+".jsonl", string(content))
 
-	u := newSessionUploader(newFakeStore(), time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return path, nil })
-	st, err := u.Flush(context.Background(), path)
+	u := newSessionUploader(newFakeStore(), time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: path}, nil })
+	st, err := u.Flush(context.Background(), &sessionRef{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +155,7 @@ func TestSessionUploaderFlushShipsPart(t *testing.T) {
 	}
 
 	// a flush with no new content ships nothing further
-	st2, err := u.Flush(context.Background(), path)
+	st2, err := u.Flush(context.Background(), &sessionRef{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +167,8 @@ func TestSessionUploaderFlushShipsPart(t *testing.T) {
 func TestSessionUploaderSplitsLargeParts(t *testing.T) {
 	content := []byte("{\"a\":1}\n{\"b\":22}\n{\"c\":333}\n")
 	path := writeSessionFile(t, testSessionID+".jsonl", string(content))
-	u := newSessionUploader(newFakeStore(), time.Hour, 20, func(context.Context) (string, error) { return path, nil })
-	st, err := u.Flush(context.Background(), path)
+	u := newSessionUploader(newFakeStore(), time.Hour, 20, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: path}, nil })
+	st, err := u.Flush(context.Background(), &sessionRef{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,12 +219,12 @@ func TestSessionUploaderSplitsLargeParts(t *testing.T) {
 func TestSessionUploaderCloseWritesClosedMarker(t *testing.T) {
 	content := []byte("{\"type\":\"message_end\"}\n")
 	path := writeSessionFile(t, testSessionID+".jsonl", string(content))
-	u := newSessionUploader(newFakeStore(), time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return path, nil })
-	if _, err := u.Flush(context.Background(), path); err != nil {
+	u := newSessionUploader(newFakeStore(), time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: path}, nil })
+	if _, err := u.Flush(context.Background(), &sessionRef{Path: path}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := u.Close(context.Background()); err != nil {
+	if err := u.Close(context.Background(), "closed"); err != nil {
 		t.Fatal(err)
 	}
 	fake := u.store.(*fakeStore)
@@ -256,11 +266,11 @@ func TestSessionUploaderCloseMarksError(t *testing.T) {
 		}
 		return nil
 	}
-	u := newSessionUploader(fake, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return path, nil })
-	if _, err := u.Flush(context.Background(), path); err == nil {
+	u := newSessionUploader(fake, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: path}, nil })
+	if _, err := u.Flush(context.Background(), &sessionRef{Path: path}); err == nil {
 		t.Fatal("expected flush error")
 	}
-	if err := u.Close(context.Background()); err == nil {
+	if err := u.Close(context.Background(), "closed"); err == nil {
 		t.Fatal("expected close error")
 	}
 	b, _, ok := fake.get(closedKey(testSessionID))
@@ -284,14 +294,63 @@ func TestSessionUploaderCloseMarksError(t *testing.T) {
 
 func TestSessionUploaderFlushDetectsShrink(t *testing.T) {
 	path := writeSessionFile(t, testSessionID+".jsonl", "{\"type\":\"message_end\"}\n")
-	u := newSessionUploader(newFakeStore(), time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return path, nil })
-	if _, err := u.Flush(context.Background(), path); err != nil {
+	u := newSessionUploader(newFakeStore(), time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: path}, nil })
+	if _, err := u.Flush(context.Background(), &sessionRef{Path: path}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte("shorter\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := u.Flush(context.Background(), path); err == nil {
+	if _, err := u.Flush(context.Background(), &sessionRef{Path: path}); err == nil {
 		t.Fatal("expected error when the session file shrinks")
+	}
+}
+
+func TestSessionUploaderMetadataLifecycle(t *testing.T) {
+	content := []byte("{\"type\":\"message_end\"}\n")
+	path := writeSessionFile(t, testSessionID+".jsonl", string(content))
+	ref := &sessionRef{
+		Path:  path,
+		State: map[string]any{"sessionName": "fix-tests", "model": map[string]any{"provider": "rec", "modelId": "flint"}},
+		Stats: map[string]any{"tokens": map[string]any{"input": float64(10), "output": float64(5)}, "toolCalls": float64(2)},
+	}
+	u := newSessionUploader(newFakeStore(), time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return ref, nil })
+	st, err := u.Flush(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.metadata == nil {
+		t.Fatal("expected metadata at session start")
+	}
+	if st.metadata.SessionID != testSessionID {
+		t.Fatalf("metadata sessionID = %q, want %q", st.metadata.SessionID, testSessionID)
+	}
+	if st.metadata.SessionName != "fix-tests" {
+		t.Fatalf("metadata sessionName = %q, want fix-tests", st.metadata.SessionName)
+	}
+	if st.metadata.StartedAt == "" {
+		t.Fatal("metadata should record startedAt at session start")
+	}
+
+	if err := u.Close(context.Background(), "closed"); err != nil {
+		t.Fatal(err)
+	}
+	fake := u.store.(*fakeStore)
+	b, _, ok := fake.get(metadataKey(testSessionID))
+	if !ok {
+		t.Fatalf("metadata not written, keys = %v", fake.keys())
+	}
+	var meta sessionMetadata
+	if err := json.Unmarshal(b, &meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta.EndedAt == "" || meta.EndReason != "closed" {
+		t.Fatalf("metadata end = %q/%q, want set", meta.EndedAt, meta.EndReason)
+	}
+	if meta.Tokens["input"] != float64(10) || meta.Tokens["output"] != float64(5) {
+		t.Fatalf("metadata tokens = %v, want input 10 / output 5", meta.Tokens)
+	}
+	if meta.ToolCalls != 2 {
+		t.Fatalf("metadata toolCalls = %d, want 2", meta.ToolCalls)
 	}
 }
