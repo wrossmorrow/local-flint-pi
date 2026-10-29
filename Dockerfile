@@ -1,14 +1,20 @@
 ARG NODE_TAG=22-bookworm
 
-# Build the pi web interface binary (Go, stdlib only) that spawns `pi --mode rpc`
-# and serves the browser UI. Baked into the base agent image below so the web
-# interface and every toolchain derived from it ship with the agent.
+# Build the pi web interface binary (Go, AWS SDK for S3 session uploads) that
+# spawns `pi --mode rpc` and serves the browser UI. Baked into the base agent
+# image below so the web interface and every toolchain derived from it ship with
+# the agent.
 FROM golang:1.23-alpine AS web-build
 WORKDIR /src
 COPY web/ ./
 RUN go build -o /web .
 
 FROM node:${NODE_TAG} AS agent
+
+# git short sha of the source tree the pi web interface binary was built from;
+# surfaced to the server as PI_WEB_BUILD_SHA (see GET /api/info)
+ARG BUILD_SHA=unknown
+ENV PI_WEB_BUILD_SHA=$BUILD_SHA
 
 ENV PAGER=cat GIT_PAGER=cat LESS=-FRX GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

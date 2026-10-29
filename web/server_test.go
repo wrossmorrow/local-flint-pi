@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSlimEventDropsSnapshotsKeepsToolBlock(t *testing.T) {
@@ -92,8 +95,22 @@ func TestRememberReplaysQueueUpdate(t *testing.T) {
 	}
 }
 
+func TestHandleExitBroadcastsSessionClosed(t *testing.T) {
+	c := NewRpcClient("", nil, nil)
+	ch, unsub := c.Subscribe()
+	defer unsub()
+	c.handleExit(nil)
+	ev := <-ch
+	if ev["type"] != "session_closed" {
+		t.Fatalf("event = %v, want session_closed", ev["type"])
+	}
+	if ev["endReason"] != "closed" {
+		t.Fatalf("event endReason = %v, want closed", ev["endReason"])
+	}
+}
+
 func TestGuard(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), []string{"devbox.local"}, "")
+	s := NewServer(NewRpcClient("", nil, nil), []string{"devbox.local"}, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
 	h := s.guard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 
 	cases := []struct {
@@ -128,7 +145,7 @@ func TestGuard(t *testing.T) {
 }
 
 func TestExtensionUIUnknownDialogIs404(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), nil, "")
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
 	r := httptest.NewRequest("POST", "/api/extension-ui/response", strings.NewReader(`{"id":"nope","value":"x"}`))
 	r.Host = "localhost"
 	r.Header.Set("Content-Type", "application/json")
@@ -140,7 +157,7 @@ func TestExtensionUIUnknownDialogIs404(t *testing.T) {
 }
 
 func TestCommandAllowlist(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), nil, "")
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
 	r := httptest.NewRequest("POST", "/api/cmd", strings.NewReader(`{"type":"export_html","outputPath":"/etc/x"}`))
 	r.Host = "localhost"
 	r.Header.Set("Content-Type", "application/json")
@@ -148,5 +165,75 @@ func TestCommandAllowlist(t *testing.T) {
 	s.Routes().ServeHTTP(w, r)
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "not allowed") {
 		t.Fatalf("got %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestFlushEndpointRequiresSession(t *testing.T) {
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
+	r := httptest.NewRequest("POST", "/api/flush", strings.NewReader("{}"))
+	r.Host = "localhost"
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d (%s)", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+}
+
+func TestCloseEndpointRequiresSession(t *testing.T) {
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
+	r := httptest.NewRequest("POST", "/api/close", strings.NewReader("{}"))
+	r.Host = "localhost"
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d (%s)", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+}
+
+func TestInfoEndpoint(t *testing.T) {
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
+	s.buildSha = "deadbeefcafe"
+	s.startedAt = time.Now().Add(-2 * time.Minute)
+	r := httptest.NewRequest("GET", "/api/info", nil)
+	r.Host = "localhost"
+	w := httptest.NewRecorder()
+	s.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (%s)", w.Code, http.StatusOK, w.Body.String())
+	}
+	var info map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &info); err != nil {
+		t.Fatalf("bad json: %v (%s)", err, w.Body.String())
+	}
+	if got, want := info["buildSha"], "deadbeefcafe"; got != want {
+		t.Fatalf("buildSha = %v, want %s", got, want)
+	}
+	if _, ok := info["cwd"].(string); !ok {
+		t.Fatalf("cwd = %v, want string", info["cwd"])
+	}
+	startedAt, ok := info["startedAt"].(string)
+	if !ok {
+		t.Fatalf("startedAt = %v, want string", info["startedAt"])
+	}
+	if _, err := time.Parse(time.RFC3339, startedAt); err != nil {
+		t.Fatalf("startedAt = %q: %v", startedAt, err)
+	}
+	uptime, ok := info["uptimeSeconds"].(float64)
+	if !ok {
+		t.Fatalf("uptimeSeconds = %v, want number", info["uptimeSeconds"])
+	}
+	if uptime < 119 {
+		t.Fatalf("uptimeSeconds = %v, want >= 119 (started 2m ago)", uptime)
+	}
+	if got, want := info["sessionId"], ""; got != want {
+		t.Fatalf("sessionId = %v, want %s", got, want)
+	}
+	if got, want := info["sessionName"], ""; got != want {
+		t.Fatalf("sessionName = %v, want %s", got, want)
+	}
+	if got, want := info["closed"], false; got != want {
+		t.Fatalf("closed = %v, want %v", got, want)
 	}
 }

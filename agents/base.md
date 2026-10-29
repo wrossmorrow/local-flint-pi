@@ -9,6 +9,7 @@ You are running in a sandboxed container with no access to the host.
   `actionlint` for workflows.
 - Don't modify AGENTS.md or any agent instruction files unless explicitly asked.
   If you think an instruction should change, suggest it in your summary.
+- Never use pkill/killall by name. Stop only processes you started, by the PID you saved.
 
 # Design choices
 

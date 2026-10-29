@@ -36,12 +36,27 @@ async function cmd(type, params = {}) {
   }
 }
 
+async function closeSessionNow() {
+  try {
+    const r = await fetch("/api/close", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.success) throw new Error(j.error || r.statusText);
+    S.closed = true;
+    input.value = ""; autoGrow(); paintEditorChrome();
+    notice("info", `closed session ${j.sessionKey ?? ""}`.trim());
+    return true;
+  } catch (e) {
+    notice("error", "close failed: " + (e?.message || e));
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------- state
 
 const S = {
   state: null,          // get_state data
   stats: null,          // get_session_stats data
-  info: {},             // {cwd, branch}
+  info: {},             // {cwd, branch, buildSha, startedAt, uptimeSeconds, sessionId, sessionName}
   levels: ["off"],
   commands: [],         // get_commands
   streaming: false,
@@ -52,6 +67,7 @@ const S = {
   ext: { status: new Map(), widgets: new Map(), title: "" },
   dialogs: [],
   history: [],          // sent prompts, for ↑/↓
+  closed: false,        // session closed via /close (no further messages accepted)
   histIdx: -1,
   images: [],
   bell: store.get("bell", false),
@@ -365,6 +381,15 @@ function apply(ev, known) {
       break;
     case "agent_end":
       break;
+    case "session_closed":
+      // the pi child process exited (e.g. harness shutdown without /close);
+      // mirror the /close handling: stop the session, drop the composer, show
+      // the closure
+      S.closed = true;
+      setStreaming(false);
+      input.value = ""; autoGrow(); paintEditorChrome();
+      notice("info", ev.endReason && ev.endReason !== "closed" ? `session closed (${ev.endReason})` : "session closed");
+      break;
     case "agent_settled":
       if (S.abortRequested) notice("warn", "interrupted");
       S.abortRequested = false;
@@ -596,6 +621,11 @@ async function resync() {
     cmd("get_state"), cmd("get_messages"), fetch("/api/info").then((r) => r.json()).catch(() => ({})),
   ]);
   S.info = info || {};
+  lastBuildSha = S.info.buildSha || "";
+  // A resync means a fresh snapshot of the live session (boot, reconnect,
+  // reload): adopt the server's view of whether it is closed instead of
+  // keeping a closed flag from a previous connection.
+  S.closed = !!info?.closed;
   if (st.success) S.state = st.data;
   clearTranscript();
   S.history = [];
@@ -629,6 +659,29 @@ function refreshStats() {
     if (st.success) S.state = st.data;
     if (ss.success) S.stats = ss.data;
     paintFooter();
+  }, 150);
+}
+
+let infoTimer = 0;
+let lastBuildSha = "";
+const INFO_POLL_MS = 5000;
+function refreshInfo() {
+  clearTimeout(infoTimer);
+  infoTimer = setTimeout(async () => {
+    try {
+      const r = await fetch("/api/info");
+      const info = await r.json().catch(() => ({}));
+      if (r.ok) {
+        const sha = info.buildSha || "";
+        const changed = sha !== lastBuildSha;
+        lastBuildSha = sha;
+        S.info = { ...S.info, ...info };
+        S.closed = !!info.closed;
+        if (changed && sha) resync();
+        else paintFooter();
+      }
+    } catch (e) { /* transient failure: keep the last good info */ }
+    infoTimer = setTimeout(refreshInfo, INFO_POLL_MS);
   }, 150);
 }
 
@@ -868,7 +921,8 @@ function autoGrow() {
 }
 
 const BUILTINS = [
-  { name: "new", description: "start a new session", run: async () => { const r = await cmd("new_session"); if (r.success && !r.data?.cancelled) resync(); } },
+  { name: "new", description: "start a new session", run: async () => { const r = await cmd("new_session"); if (r.success && !r.data?.cancelled) { S.closed = false; resync(); } } },
+  { name: "close", description: "close the session (flush + close marker)", run: async () => { await closeSessionNow(); } },
   { name: "compact", description: "compact context [custom instructions]", run: (arg) => cmd("compact", arg ? { customInstructions: arg } : {}) },
   { name: "model", description: "choose a model", run: () => openModelMenu($("#f-model")) },
   { name: "thinking", description: "set thinking level <" + "level>", run: async (arg) => { if (arg) { await cmd("set_thinking_level", { level: arg }); refreshStats(); } else openThinkingMenu($("#f-thinking")); } },
@@ -941,6 +995,8 @@ async function submit(mode) {
     finishTool(t, (d.output ?? r.error ?? "") + (d.truncated ? `\n… (truncated; full output in ${d.fullOutputPath})` : ""), !r.success || d.exitCode !== 0 || d.cancelled);
     return;
   }
+  // A closed session accepts no further messages from the user.
+  if (S.closed) { input.value = ""; autoGrow(); paintEditorChrome(); return; }
   const params = { message: text };
   if (S.images.length) params.images = S.images.map(({ data, mimeType }) => ({ type: "image", data, mimeType }));
   let type = "prompt";
@@ -1077,6 +1133,15 @@ $("#f-bell").addEventListener("click", async () => {
   S.bell = !S.bell; store.set("bell", S.bell); paintFooter();
 });
 
+// Upload the current session to S3 (gzipped JSONL parts) now, instead of
+// waiting for the periodic flush / shutdown close.
+$("#f-flush").addEventListener("click", async () => {
+  const r = await fetch("/api/flush", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.success) notice("error", "flush failed: " + (j.error || r.statusText));
+  else notice("info", `flushed session ${j.sessionKey ?? ""}: ${j.partCount ?? 0} parts, offset ${j.finalOffset ?? 0}`.trim());
+});
+
 function toggleView(cls) {
   document.body.classList.toggle(cls);
   store.set(cls, document.body.classList.contains(cls));
@@ -1095,6 +1160,7 @@ function showHelp() {
     "ctrl+t           show/hide thinking",
     "ctrl+o           expand/collapse all tool output",
     "↑ / ↓            previous prompts (at start of input)",
+    "/close           close the session (flush + close marker)",
     "/                commands (built-in, extension, skills, prompts)",
     "!cmd             run a shell command in the sandbox; output goes into the next prompt",
     "click a tool row to expand it; hover an answer to copy it",
@@ -1189,4 +1255,5 @@ function showEmpty() {
 
 paintFooter();
 connect();
+refreshInfo();
 input.focus();

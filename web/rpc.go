@@ -166,6 +166,16 @@ func (c *RpcClient) handleExit(err error) {
 		ch <- RpcCommandResult{Success: false, Error: msg}
 	}
 
+	// The pi child process has exited, so the session is over from the browser's
+	// perspective. Broadcast the closure to live subscribers before closing
+	// their channels, so a browser can render the end of the session the same
+	// way the /close trigger does (via the shutdown close sweep).
+	endReason := "closed"
+	if err != nil {
+		endReason = "crashed"
+	}
+	c.broadcast(Event{"type": "session_closed", "endReason": endReason})
+
 	c.subsMu.Lock()
 	for ch := range c.subs {
 		delete(c.subs, ch)
@@ -388,6 +398,45 @@ func (c *RpcClient) Send(ctx context.Context, command map[string]any) (*RpcComma
 		c.pendingMu.Unlock()
 		return nil, ctx.Err()
 	}
+}
+
+// State sends the get_state command and returns the response data payload
+// (the session file and friends). It is how the server learns which session
+// file it should be uploading.
+func (c *RpcClient) State(ctx context.Context) (map[string]any, error) {
+	res, err := c.Send(ctx, map[string]any{"type": "get_state"})
+	if err != nil {
+		return nil, err
+	}
+	if !res.Success {
+		return nil, fmt.Errorf("get_state failed: %s", res.Error)
+	}
+	var data map[string]any
+	if len(res.Data) > 0 {
+		if err := json.Unmarshal(res.Data, &data); err != nil {
+			return nil, fmt.Errorf("get_state: bad data: %w", err)
+		}
+	}
+	return data, nil
+}
+
+// Stats sends the get_session_stats command and returns the response data
+// (token and message totals).
+func (c *RpcClient) Stats(ctx context.Context) (map[string]any, error) {
+	res, err := c.Send(ctx, map[string]any{"type": "get_session_stats"})
+	if err != nil {
+		return nil, err
+	}
+	if !res.Success {
+		return nil, fmt.Errorf("get_session_stats failed: %s", res.Error)
+	}
+	var data map[string]any
+	if len(res.Data) > 0 {
+		if err := json.Unmarshal(res.Data, &data); err != nil {
+			return nil, fmt.Errorf("get_session_stats: bad data: %w", err)
+		}
+	}
+	return data, nil
 }
 
 // DialogOpen reports whether a dialog is currently pending for `id`.

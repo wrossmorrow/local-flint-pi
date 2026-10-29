@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -45,16 +46,106 @@ type Server struct {
 	rpc          *RpcClient
 	allowedHosts map[string]bool
 	logoPath     string
+	uploader     *sessionUploader
+	startedAt    time.Time
+	buildSha     string
 }
 
-func NewServer(rpc *RpcClient, allowedHosts []string, logoPath string) *Server {
+func NewServer(rpc *RpcClient, allowedHosts []string, logoPath string, uploader *sessionUploader) *Server {
 	hosts := map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
 	for _, h := range allowedHosts {
 		if h = strings.TrimSpace(h); h != "" {
 			hosts[strings.ToLower(h)] = true
 		}
 	}
-	return &Server{rpc: rpc, allowedHosts: hosts, logoPath: logoPath}
+	s := &Server{rpc: rpc, allowedHosts: hosts, logoPath: logoPath, startedAt: time.Now()}
+	s.buildSha = os.Getenv("PI_WEB_BUILD_SHA")
+	if uploader == nil {
+		uploader = newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil })
+	}
+	s.uploader = uploader
+	return s
+}
+
+// SessionSource returns the function the session uploader uses to resolve the
+// live session. The server owns the RpcClient, so it is the natural source of
+// truth for which session is live.
+func (s *Server) SessionSource() func(context.Context) (*sessionRef, error) {
+	return func(ctx context.Context) (*sessionRef, error) { return s.SessionRef(ctx) }
+}
+
+// SessionRef resolves the live pi session the uploader ships: its file path,
+// the get_state / get_session_stats snapshots, and the static session
+// attributes (repo, agent environment, agent identity, client host).
+func (s *Server) SessionRef(ctx context.Context) (*sessionRef, error) {
+	state, err := s.rpc.State(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p, _ := state["sessionFile"].(string)
+	if p == "" {
+		return nil, fmt.Errorf("pi reported no session file")
+	}
+	cwd, wdErr := os.Getwd()
+	if wdErr != nil {
+		cwd = ""
+	}
+	ref := &sessionRef{
+		Path:             p,
+		State:            state,
+		Stats:            map[string]any{},
+		Repo:             gitRepo(cwd),
+		AgentEnvironment: agentEnvironment(),
+		AgentIdentity:    os.Getenv("GITHUB_APP_USER"),
+		ClientHost:       clientHost(),
+	}
+	if stats, err := s.rpc.Stats(ctx); err == nil {
+		ref.Stats = stats
+	}
+	return ref, nil
+}
+
+// gitRepo returns the origin remote (owner/name) of the git repo at dir, if
+// any.
+func gitRepo(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "remote", "get-url", "origin").Output()
+	if err != nil {
+		return ""
+	}
+	u := strings.TrimSpace(string(out))
+	u = strings.TrimSuffix(u, ".git")
+	if i := strings.LastIndex(u, "/"); i >= 0 {
+		return u[i+1:]
+	}
+	return u
+}
+
+// agentEnvironment collects the agent runtime details (no secrets) for the
+// session metadata. Values are supplied via env and are optional.
+func agentEnvironment() map[string]any {
+	env := map[string]any{}
+	if v := os.Getenv("PI_WEB_AGENT_TOOLCHAIN"); v != "" {
+		env["toolchain"] = v
+	}
+	if v := os.Getenv("PI_WEB_AGENT_IMAGE_DIGEST"); v != "" {
+		env["imageDigest"] = v
+	}
+	if v := os.Getenv("PI_WEB_AGENT_PI_VERSION"); v != "" {
+		env["piVersion"] = v
+	}
+	if v := os.Getenv("PI_WEB_AGENT_EXTENSION_VERSIONS"); v != "" {
+		env["extensionVersions"] = v
+	}
+	return env
+}
+
+// clientHost returns the hostname of this machine, used as a coarse client
+// identifier in the session metadata.
+func clientHost() string {
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return h
+	}
+	return "unknown"
 }
 
 // Routes returns the HTTP handler for the web interface.
@@ -69,6 +160,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/stats", s.passthrough("get_session_stats"))
 	mux.HandleFunc("POST /api/cmd", s.handleCommand)
 	mux.HandleFunc("POST /api/extension-ui/response", s.handleExtensionUIResponse)
+	mux.HandleFunc("POST /api/flush", s.handleFlush)
+	mux.HandleFunc("POST /api/close", s.handleClose)
 	return s.guard(mux)
 }
 
@@ -115,11 +208,31 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, map[string]any{"ok": status == http.StatusOK})
 }
 
-// handleInfo reports things the footer shows that pi's RPC does not expose:
-// the working directory and its git branch.
+// handleInfo reports the server runtime info the UI reads and refreshes on:
+// the build SHA, process start time and uptime, and the live session identity,
+// plus the working directory and its git branch that the footer shows. The
+// live session's closed state is reported as well, so a browser that (re)
+// connects after a restart can tell a fresh session apart from one closed
+// earlier. The UI polls it and re-syncs when the build SHA changes (i.e. the
+// server restarted onto a new build).
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	cwd, _ := os.Getwd()
-	writeJSON(w, http.StatusOK, map[string]any{"cwd": cwd, "branch": gitBranch(cwd)})
+	info := map[string]any{
+		"cwd":           cwd,
+		"branch":        gitBranch(cwd),
+		"buildSha":      s.buildSha,
+		"startedAt":     s.startedAt.UTC().Format(time.RFC3339),
+		"uptimeSeconds": int64(time.Since(s.startedAt) / time.Second),
+		"sessionId":     "",
+		"sessionName":   "",
+		"closed":        false,
+	}
+	if ref, err := s.SessionRef(r.Context()); err == nil && ref != nil {
+		info["sessionId"] = sessionIDFromFile(ref.Path)
+		info["sessionName"] = sessionNameFromState(ref.State)
+		info["closed"] = s.uploader.IsClosed(sessionIDFromFile(ref.Path))
+	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 func gitBranch(dir string) string {
@@ -177,7 +290,29 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 	s.run(w, r, cmd)
 }
 
+// isUserTurnCommand reports whether the command sends a user message to the
+// agent (prompt, steer, or follow-up).
+func isUserTurnCommand(t string) bool {
+	switch t {
+	case "prompt", "steer", "follow_up":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Server) run(w http.ResponseWriter, r *http.Request, cmd map[string]any) {
+	// A session that has been closed via the close trigger or the shutdown
+	// sweep accepts no further user messages.
+	if t, ok := cmd["type"].(string); ok && isUserTurnCommand(t) && s.uploader != nil && s.uploader.Enabled() {
+		ctx, cancel := context.WithTimeout(r.Context(), defaultCommandTimeout)
+		defer cancel()
+		ref, err := s.SessionRef(ctx)
+		if err == nil && ref != nil && s.uploader.IsClosed(sessionIDFromFile(ref.Path)) {
+			writeJSON(w, http.StatusConflict, map[string]any{"success": false, "error": "session closed"})
+			return
+		}
+	}
 	timeout := defaultCommandTimeout
 	if t, _ := cmd["type"].(string); longCommands[t] {
 		timeout = 30 * time.Minute
@@ -190,6 +325,60 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request, cmd map[string]any)
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// handleFlush ships everything in the current session since the last offset
+// and reports what was uploaded. The UI can call it to force an upload now;
+// the periodic ticker and shutdown close do the same automatically.
+func (s *Server) handleFlush(w http.ResponseWriter, r *http.Request) {
+	if !s.uploader.Enabled() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"success": false, "error": "s3 not configured"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), defaultCommandTimeout)
+	defer cancel()
+	ref, err := s.SessionRef(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"success": false, "error": "session unavailable: " + err.Error()})
+		return
+	}
+	st, err := s.uploader.Flush(ctx, ref)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success":     true,
+		"sessionKey":  st.sessionKey,
+		"finalOffset": st.lastOffset,
+		"partCount":   st.partCount,
+		"hash":        st.hashHex(),
+		"shipped":     st.shipped,
+	})
+}
+
+// handleClose performs an explicit close of the current session: it ships
+// pending content and writes the sessions/<id>/_closed marker, the same final
+// flush + close marker the shutdown path performs. It is the close trigger for
+// the between-session lifecycle (flush does not write the close marker).
+func (s *Server) handleClose(w http.ResponseWriter, r *http.Request) {
+	if !s.uploader.Enabled() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"success": false, "error": "s3 not configured"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), defaultCommandTimeout)
+	defer cancel()
+	ref, err := s.SessionRef(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"success": false, "error": "session unavailable: " + err.Error()})
+		return
+	}
+	key := sessionIDFromFile(ref.Path)
+	if err := s.uploader.CloseSession(ctx, key, "closed", ref); err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "sessionKey": key})
 }
 
 // handleEvents streams RPC session events to the client as server-sent events.
