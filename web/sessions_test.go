@@ -307,6 +307,21 @@ func TestSessionUploaderIsClosed(t *testing.T) {
 	}
 }
 
+func TestSessionUploaderAdoptsClosedMarkerAtRegistration(t *testing.T) {
+	path := writeSessionFile(t, testSessionID+".jsonl", "{\"type\":\"message_end\"}\n")
+	fake := newFakeStore()
+	if err := fake.Put(context.Background(), closedKey(testSessionID), []byte(`{"status":"ok"}`), closedContentType); err != nil {
+		t.Fatal(err)
+	}
+	u := newSessionUploader(fake, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: path}, nil })
+	if _, err := u.Flush(context.Background(), &sessionRef{Path: path}); err != nil {
+		t.Fatal(err)
+	}
+	if !u.IsClosed(testSessionID) {
+		t.Fatal("session that was closed before the restart should be closed after adopting it")
+	}
+}
+
 func TestSessionUploaderCloseMarksError(t *testing.T) {
 	path := writeSessionFile(t, testSessionID+".jsonl", "{\"type\":\"message_end\"}\n")
 	fake := newFakeStore()
