@@ -24,3 +24,7 @@ The agent container runs the [pi web interface](https://pi.dev/docs/latest/rpc) 
 - `GET /api/state`, `GET /api/stats`, `POST /api/abort`, `POST /api/clear_queue` — session introspection and control.
 
 The service is reached from the host via the compose port mapping (`127.0.0.1:8787:8787`); `just up <repo>` runs it with `--service-ports`.
+
+The `pi-web` binary is baked into the base `agent` image during the Docker build (via the `web-build` stage, which builds the Go binary and copies it to `/usr/local/bin/pi-web`), so the default `agent` image, and every toolchain derived from it (`python`, `golang`, `rust`, `java17`, `java21`), include it. Toolchain images built with `just build <toolchain>` therefore run the web interface for that toolchain; the compose `agent` service just selects the build target (`agent`, or the requested toolchain) and the entrypoint execs `pi-web`.
+
+There is no separate `web` image to build: the full agent image is the web-enabled image now.

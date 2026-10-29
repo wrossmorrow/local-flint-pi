@@ -1,4 +1,13 @@
 ARG NODE_TAG=22-bookworm
+
+# Build the pi web interface binary (Go, stdlib only) that spawns `pi --mode rpc`
+# and serves the browser UI. Baked into the base agent image below so the web
+# interface and every toolchain derived from it ship with the agent.
+FROM golang:1.23-alpine AS web-build
+WORKDIR /src
+COPY web/ ./
+RUN go build -o /web .
+
 FROM node:${NODE_TAG} AS agent
 
 ENV PAGER=cat GIT_PAGER=cat LESS=-FRX GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
@@ -42,6 +51,11 @@ RUN mkdir -p /home/node/.pi /opt/agents /work \
     && chown node:node /home/node/.pi /work
 
 COPY --chmod=644 agents/base.md /opt/agents/00-base.md
+
+# Bake the pi web interface binary (built in the `web-build` stage above) into the
+# base agent image, so the web interface and any toolchain derived from this image
+# can run the agent via the RPC server.
+COPY --from=web-build /web /usr/local/bin/pi-web
 
 USER node
 WORKDIR /work
@@ -182,17 +196,11 @@ WORKDIR /work
 
 ENTRYPOINT ["/opt/entrypoint.sh"]
 
-# Build the pi web interface binary (Go, stdlib only) that spawns `pi --mode rpc`
-# and serves the browser UI.
-FROM golang:1.23-alpine AS web
-WORKDIR /src
-COPY web/ ./
-RUN go build -o /web .
-
-# Final stage: the full agent image (default build target for bare docker build)
+# Final stage: the full agent image (default build target for bare docker build).
+# The pi web interface binary is baked into the base agent image, so this stage
+# only re-declares the runtime user and entrypoint.
 FROM agent AS final
 USER node
 WORKDIR /work
-COPY --from=web /web /usr/local/bin/pi-web
 
 ENTRYPOINT ["/opt/entrypoint.sh"]
