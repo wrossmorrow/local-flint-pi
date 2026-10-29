@@ -110,7 +110,7 @@ func main() {
 
 	var server *Server
 	var uploader *sessionUploader
-	if cfg.bucket != "" {
+	if cfg.bucket != "" && cfg.accessKey != "" && cfg.secretKey != "" {
 		store, err := newS3Store(context.Background(), cfg.bucket, cfg.accessKey, cfg.secretKey, cfg.region)
 		if err != nil {
 			log.Fatalf("failed to create s3 store: %v", err)
