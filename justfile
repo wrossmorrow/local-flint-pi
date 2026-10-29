@@ -13,7 +13,7 @@ default:
 
 # containerize for sessions, optionally targeting a toolchain stage (agent, python, golang, rust, java17, java21)
 build toolchain="agent":
-    docker build --target {{ toolchain }} -t {{ image_base }}-{{ toolchain }} .
+    docker build --build-arg BUILD_SHA=$(git rev-parse --short HEAD) --target {{ toolchain }} -t {{ image_base }}-{{ toolchain }} .
 
 # containerize all image variants (agent, python, golang, rust, java17, java21)
 build-all:
