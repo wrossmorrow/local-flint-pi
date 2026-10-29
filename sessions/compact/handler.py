@@ -9,7 +9,7 @@ s3 = boto3.client('s3')
 
 
 def process_session(bucket: str, session_id: str, cleanup: bool = False, rebuild: bool = False) -> None:
-    target_key = f"sessions/{session_id}/compacted.gz"
+    target_key = f"sessions/{session_id}/compacted.jsonl.gz"
 
     # Check if target already exists; bail if so
     # NOTE: this will block compaction on "restarts", if there are restarts
