@@ -360,6 +360,16 @@ func (u *sessionUploader) Flush(ctx context.Context, ref *sessionRef) (*sessionS
 		if st.metadata == nil {
 			st.metadata = meta
 		}
+		// A session that was closed before this process started (via the close
+		// trigger or the shutdown sweep, and shipped to object storage) is still
+		// closed: adopting the _closed marker keeps a restarted server from
+		// treating a closed session as open again.
+		if existing, err := u.store.Get(ctx, closedKey(key)); err == nil {
+			var cr closedReport
+			if err := json.Unmarshal(existing, &cr); err == nil {
+				st.closed = true
+			}
+		}
 		m := st.metadata
 		m.SessionName = sessionNameFromState(ref.State)
 		m.Repo = ref.Repo
