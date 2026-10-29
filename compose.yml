@@ -104,7 +104,7 @@ services:
       AWS_ACCESS_KEY_ID: ${WEB_AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${WEB_AWS_SECRET_ACCESS_KEY:-}
       AWS_REGION: ${WEB_AWS_REGION:-us-east-1}
-      REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11005/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-32768}}'
+      REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11500/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-32768}}'
       PI_CODING_AGENT_DIR: /home/node/.pi
       PI_SKIP_VERSION_CHECK: "1"
       # pass the sandbox egress proxy to the JVM (and thus the gradle wrapper / gradle
