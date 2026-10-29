@@ -77,3 +77,7 @@ flush-usage-table host="127.0.0.1" port="9091":
         -H 'content-type: application/json'\
         -H 'accept: application/json' \
         | jq .
+
+# run the web UI against a scripted fake pi (no model or container needed)
+web-dev port="8787":
+    cd web && PI_BIN=node PI_ARGS=testdata/fake-pi.mjs PI_LOGO_PATH=../rec-ext/logo-pixels.json PI_WEB_PORT={{ port }} go run .

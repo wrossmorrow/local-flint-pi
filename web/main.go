@@ -8,17 +8,20 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
 
 // config holds the runtime configuration for the pi web interface.
 type config struct {
-	host string
-	port int
-	bin  string
-	args []string
-	env  []string
+	host         string
+	port         int
+	bin          string
+	args         []string
+	env          []string
+	allowedHosts []string
+	logoPath     string
 }
 
 // loadConfig reads the web interface configuration from the environment.
@@ -27,11 +30,16 @@ func loadConfig() (*config, error) {
 	port := envIntOr("PI_WEB_PORT", 8787)
 	bin := envOr("PI_BIN", "pi")
 
+	// PI_ARGS replaces the default pi arguments (whitespace-separated); used to
+	// point the web server at testdata/fake-pi.mjs during UI development.
 	args := []string{
 		"--mode", "rpc",
 		"--extension", "/opt/rec/flint-pi.ts",
 		"--provider", "rec",
 		"--model", "flint",
+	}
+	if v := os.Getenv("PI_ARGS"); v != "" {
+		args = strings.Fields(v)
 	}
 	if name := envOr("SESSION_NAME", ""); name != "" {
 		args = append(args, "--name", name)
@@ -42,11 +50,13 @@ func loadConfig() (*config, error) {
 	env = append(env, "REC_API_KEY="+envOr("REC_API_KEY", ""))
 
 	return &config{
-		host: host,
-		port: port,
-		bin:  bin,
-		args: args,
-		env:  env,
+		host:         host,
+		port:         port,
+		bin:          bin,
+		args:         args,
+		env:          env,
+		allowedHosts: strings.Split(os.Getenv("PI_WEB_ALLOWED_HOSTS"), ","),
+		logoPath:     envOr("PI_LOGO_PATH", "/opt/rec/logo-pixels.json"),
 	}, nil
 }
 
@@ -73,11 +83,11 @@ func main() {
 	}
 
 	rpc := NewRpcClient(cfg.bin, cfg.args, cfg.env)
-	if err := rpc.Start(nil); err != nil {
+	if err := rpc.Start(); err != nil {
 		log.Fatalf("failed to start pi rpc client: %v", err)
 	}
 
-	server := NewServer(rpc)
+	server := NewServer(rpc, cfg.allowedHosts, cfg.logoPath)
 
 	srv := &http.Server{
 		Addr:    cfg.host + ":" + strconv.Itoa(cfg.port),
@@ -107,7 +117,7 @@ func main() {
 		if err := srv.Shutdown(ctx); err != nil {
 			log.Printf("http shutdown error: %v", err)
 		}
-		if err := rpc.Stop(context.Background()); err != nil {
+		if err := rpc.Stop(); err != nil {
 			log.Printf("failed to stop pi rpc child: %v", err)
 		}
 		os.Exit(0)

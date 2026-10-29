@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23171520'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' text-anchor='middle' fill='%23c9b8ff'%3E%CF%80%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="app.css">
+<script src="vendor/marked.umd.js"></script>
+<script src="vendor/purify.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <main id="scroll">
+    <div id="transcript"></div>
+    <div id="spinner" hidden></div>
+  </main>
+  <button id="jump" type="button" hidden>↓ new output</button>
+  <section id="bottom">
+    <div id="widgets-above" class="widgets"></div>
+    <div id="queue"></div>
+    <div id="attachments"></div>
+    <div id="dialog" hidden></div>
+    <div id="editor" class="editor">
+      <div class="editor-rule top"><span class="rule-label" id="editor-label"></span></div>
+      <textarea id="input" rows="1" spellcheck="false" autocomplete="off" placeholder="message pi  ·  / commands  ·  ! bash"></textarea>
+      <div class="editor-rule bottom"><span class="rule-hint" id="editor-hint"></span></div>
+      <div id="popup" hidden></div>
+    </div>
+    <div id="widgets-below" class="widgets"></div>
+    <footer id="footer">
+      <div class="footer-row">
+        <span id="f-cwd" class="dim"></span>
+        <span class="grow"></span>
+        <span id="f-status" class="dim"></span>
+      </div>
+      <div class="footer-row">
+        <span id="f-tokens" class="dim"></span>
+        <span class="grow"></span>
+        <button type="button" class="chip" id="f-view-thinking" title="Show/hide thinking (ctrl+t)"></button>
+        <button type="button" class="chip" id="f-view-tools" title="Expand/collapse tool output (ctrl+o)"></button>
+        <button type="button" class="chip" id="f-bell" title="Desktop notification when the agent finishes or needs input"></button>
+        <button type="button" class="chip" id="f-model" title="Change model"></button>
+        <button type="button" class="chip" id="f-thinking" title="Thinking level (shift+tab)"></button>
+        <button type="button" class="chip" id="f-help" title="Keyboard shortcuts">?</button>
+      </div>
+    </footer>
+  </section>
+  <div id="menu" hidden></div>
+  <div id="conn" hidden>reconnecting…</div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

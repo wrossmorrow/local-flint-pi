@@ -16,12 +16,30 @@ Build a toolchain-specific image with `just build <toolchain>`, or directly via 
 
 ## Web interface
 
-The agent container runs the [pi web interface](https://pi.dev/docs/latest/rpc) (`web/`): a small Go service that spawns `pi --mode rpc` and serves a browser UI over HTTP + server-sent events. The UI is served on startup at `http://127.0.0.1:8787` (override with `PI_WEB_PORT`) and lets you send prompts, watch streamed responses, approve/answer extension dialogs, and abort runs.
+The agent container runs the pi web interface (`web/`): a small Go service that spawns `pi --mode rpc` ([RPC docs](https://pi.dev/docs/latest/rpc)) and serves a browser UI over HTTP + server-sent events at `http://127.0.0.1:8787` (override with `PI_WEB_PORT`).
 
-- `POST /api/prompt` — send a prompt (body: `{"message": "..."}`), returns the prompt disposition.
-- `GET /api/events` — server-sent events stream of session events and extension UI requests.
-- `POST /api/extension-ui/response` — answer a pending extension dialog (`{"id": "...", "value": "..."}` / `{"id": "...", "confirmed": true}` / `{"id": "...", "cancelled": true}`).
-- `GET /api/state`, `GET /api/stats`, `POST /api/abort`, `POST /api/clear_queue` — session introspection and control.
+The UI is styled after pi's terminal interface: a single transcript column, an editor whose border color tracks the thinking level, and pi's footer (cwd/branch, session, token and context usage, model, thinking level). Tool calls render as one-line rows (`bash $ go test ./...`, `read path:1-40`, `edit path  +2 -1`) that expand on click; thinking is collapsed to a one-liner. The page rebuilds itself from `get_messages` when it (re)connects, so reloading mid-run or opening a second tab is safe.
+
+| key | action |
+|---|---|
+| `enter` / `shift+enter` | send / newline; while the agent works, `enter` steers it |
+| `alt+enter` | queue a follow-up for when the agent finishes |
+| `esc` | interrupt the agent, cancel a dialog |
+| `shift+tab` | cycle thinking level |
+| `ctrl+t` / `ctrl+o` | show thinking / expand all tool output |
+| `/` | commands: built-ins (`/new`, `/compact`, `/model`, `/thinking`, `/name`, `/copy`, ...) plus extension, skill and prompt commands from `get_commands` |
+| `!cmd` | run a shell command directly (pi's `bash` RPC); its output goes into the next prompt |
+
+API (all JSON; writes require `Content-Type: application/json`):
+
+- `GET /api/events` — SSE stream of session events. Each stream starts by replaying open extension dialogs and status/widgets. `message_update` events are slimmed: pi's cumulative `message`/`partial` snapshots are dropped (the UI accumulates deltas and takes the final message from `message_end`).
+- `POST /api/cmd` — send one allowlisted RPC command, e.g. `{"type":"prompt","message":"..."}`, `{"type":"steer",...}`, `{"type":"set_thinking_level","level":"high"}`; returns pi's `{success, error?, data?}`.
+- `POST /api/extension-ui/response` — answer a dialog (`{"id","value"}` / `{"id","confirmed"}` / `{"id","cancelled":true}`). pi applies dialog timeouts itself.
+- `GET /api/state`, `GET /api/stats` — `get_state` / `get_session_stats` passthroughs. `GET /api/info` — cwd and git branch. `GET /api/logo` — the rec header logo pixels (`PI_LOGO_PATH`).
+
+Requests are only accepted with a loopback `Host` (add others with `PI_WEB_ALLOWED_HOSTS=host1,host2`) and a matching `Origin`, so other websites open in the browser can't drive the agent (DNS rebinding / cross-site POSTs).
+
+To work on the UI without a model, run the server against a scripted stand-in for pi: `just web-dev` (needs Go and Node), then open `http://localhost:8787`. `web/testdata/fake-pi.mjs` streams thinking, markdown, tool calls, dialogs (prompt with "confirm", "select" or "input"), tool errors ("error"), slow runs to interrupt ("abort-me") and long answers ("long").
 
 The service is reached from the host via the `web-gateway` sidecar — an `alpine/socat` TCP forwarder that listens on `127.0.0.1:${PI_WEB_PORT:-8787}:8787` and forwards into the agent's web server over the compose network. `just up <repo>` brings up the full compose stack via `docker compose up`, which includes the gateway; the agent now waits on it via `depends_on: service_started`.
 

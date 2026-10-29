@@ -2,13 +2,18 @@ package main
 
 import (
 	"embed"
+	"io/fs"
 	"net/http"
 )
 
-//go:embed index.html
-var uiFS embed.FS
+//go:embed static
+var staticFS embed.FS
 
-// newUIServer returns the handler that serves the embedded single-page UI.
-func newUIServer() http.FileSystem {
-	return http.FS(uiFS)
+// uiFS returns the embedded single-page UI (static/index.html and its assets).
+func uiFS() http.FileSystem {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		panic(err)
+	}
+	return http.FS(sub)
 }
