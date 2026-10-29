@@ -16,8 +16,8 @@ const out = (o) => process.stdout.write(JSON.stringify(o) + "\n");
 const now = () => Date.now();
 
 const models = [
-  { id: "flint", name: "Flint", api: "openai-completions", provider: "rec", baseUrl: "http://127.0.0.1:11005/v1", reasoning: true, input: ["text"], contextWindow: 262144, maxTokens: 32768, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-  { id: "flint-mini", name: "Flint Mini", api: "openai-completions", provider: "rec", baseUrl: "http://127.0.0.1:11005/v1", reasoning: false, input: ["text", "image"], contextWindow: 131072, maxTokens: 16384, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+  { id: "flint", name: "Flint", api: "openai-completions", provider: "rec", baseUrl: "http://127.0.0.1:11500/v1", reasoning: true, input: ["text"], contextWindow: 262144, maxTokens: 32768, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+  { id: "flint-mini", name: "Flint Mini", api: "openai-completions", provider: "rec", baseUrl: "http://127.0.0.1:11500/v1", reasoning: false, input: ["text", "image"], contextWindow: 131072, maxTokens: 16384, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
 ];
 
 const S = {
@@ -383,7 +383,7 @@ async function handle(cmd) {
   }
 }
 
-out({ type: "extension_ui_request", id: "st1", method: "setStatus", statusKey: "rec", statusText: "rec: flint @ :11005" });
+out({ type: "extension_ui_request", id: "st1", method: "setStatus", statusKey: "rec", statusText: "rec: flint @ :11500" });
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 rl.on("line", (line) => {
   if (!line.trim()) return;
