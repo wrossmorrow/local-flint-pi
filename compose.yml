@@ -119,6 +119,9 @@ services:
       - sandbox
     stdin_open: true
     tty: true
+    # the final session-upload close (gzip + put) can outlast docker/compose'
+    # default 10s stop_grace_period, which SIGKILLs the container mid-flush
+    stop_grace_period: 30s
 
   # host-facing gateway for the pi web interface: socat TCP forwarder that
   # listens on the host and forwards into the agent's web server. The agent sits
