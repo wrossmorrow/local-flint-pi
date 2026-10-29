@@ -622,6 +622,10 @@ async function resync() {
   ]);
   S.info = info || {};
   lastBuildSha = S.info.buildSha || "";
+  // A resync means a fresh snapshot of the live session (boot, reconnect,
+  // reload): adopt the server's view of whether it is closed instead of
+  // keeping a closed flag from a previous connection.
+  S.closed = !!info?.closed;
   if (st.success) S.state = st.data;
   clearTranscript();
   S.history = [];
@@ -672,6 +676,7 @@ function refreshInfo() {
         const changed = sha !== lastBuildSha;
         lastBuildSha = sha;
         S.info = { ...S.info, ...info };
+        S.closed = !!info.closed;
         if (changed && sha) resync();
         else paintFooter();
       }

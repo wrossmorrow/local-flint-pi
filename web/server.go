@@ -210,9 +210,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // handleInfo reports the server runtime info the UI reads and refreshes on:
 // the build SHA, process start time and uptime, and the live session identity,
-// plus the working directory and its git branch that the footer shows. The UI
-// polls this and re-syncs when the build SHA changes (i.e. the server restarted
-// onto a new build).
+// plus the working directory and its git branch that the footer shows. The
+// live session's closed state is reported as well, so a browser that (re)
+// connects after a restart can tell a fresh session apart from one closed
+// earlier. The UI polls it and re-syncs when the build SHA changes (i.e. the
+// server restarted onto a new build).
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	cwd, _ := os.Getwd()
 	info := map[string]any{
@@ -223,10 +225,12 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"uptimeSeconds": int64(time.Since(s.startedAt) / time.Second),
 		"sessionId":     "",
 		"sessionName":   "",
+		"closed":        false,
 	}
 	if ref, err := s.SessionRef(r.Context()); err == nil && ref != nil {
 		info["sessionId"] = sessionIDFromFile(ref.Path)
 		info["sessionName"] = sessionNameFromState(ref.State)
+		info["closed"] = s.uploader.IsClosed(sessionIDFromFile(ref.Path))
 	}
 	writeJSON(w, http.StatusOK, info)
 }

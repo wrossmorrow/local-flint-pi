@@ -284,6 +284,29 @@ func TestSessionUploaderCloseSessionWritesClosedMarker(t *testing.T) {
 	}
 }
 
+func TestSessionUploaderIsClosed(t *testing.T) {
+	path := writeSessionFile(t, testSessionID+".jsonl", "{\"type\":\"message_end\"}\n")
+	u := newSessionUploader(newFakeStore(), time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: path}, nil })
+	if _, err := u.Flush(context.Background(), &sessionRef{Path: path}); err != nil {
+		t.Fatal(err)
+	}
+	if u.IsClosed(testSessionID) {
+		t.Fatal("session just started should not be closed")
+	}
+	if err := u.CloseSession(context.Background(), testSessionID, "closed", &sessionRef{Path: path}); err != nil {
+		t.Fatal(err)
+	}
+	if !u.IsClosed(testSessionID) {
+		t.Fatal("session closed via the close trigger should be closed")
+	}
+	if err := u.Close(context.Background(), "closed"); err != nil {
+		t.Fatal(err)
+	}
+	if !u.IsClosed(testSessionID) {
+		t.Fatal("session closed via the shutdown sweep should stay closed")
+	}
+}
+
 func TestSessionUploaderCloseMarksError(t *testing.T) {
 	path := writeSessionFile(t, testSessionID+".jsonl", "{\"type\":\"message_end\"}\n")
 	fake := newFakeStore()

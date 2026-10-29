@@ -233,4 +233,7 @@ func TestInfoEndpoint(t *testing.T) {
 	if got, want := info["sessionName"], ""; got != want {
 		t.Fatalf("sessionName = %v, want %s", got, want)
 	}
+	if got, want := info["closed"], false; got != want {
+		t.Fatalf("closed = %v, want %v", got, want)
+	}
 }
