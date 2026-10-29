@@ -28,8 +28,9 @@ const (
 	// single PutObject and need no S3 multipart upload.
 	defaultSessionMaxPartBytes = 5 * 1024 * 1024
 	// partKeyFormat names an uploaded part. The number is the zero-padded
-	// byte offset in the session file at which the part begins.
-	partKeyFormat = "sessions/%s/part-%06d.jsonl.gz"
+	// byte offset in the session file at which the part begins. Parts live in
+	// a parts/ sub-folder of the session prefix.
+	partKeyFormat = "sessions/%s/parts/part-%06d.jsonl.gz"
 	// closedKeyFormat is the shutdown marker for a session.
 	closedKeyFormat = "sessions/%s/_closed"
 	// metadataKeyFormat is the session metadata object written at startup and
@@ -438,7 +439,7 @@ func sessionIDFromFile(path string) string {
 }
 
 // partKey returns the S3 key for one part of a session: the zero-padded byte
-// offset at which the part begins, as sessions/<id>/part-<offset>.jsonl.gz.
+// offset at which the part begins, as sessions/<id>/parts/part-<offset>.jsonl.gz.
 func partKey(sessionKey string, offset int64) string {
 	return fmt.Sprintf(partKeyFormat, sessionKey, offset)
 }
