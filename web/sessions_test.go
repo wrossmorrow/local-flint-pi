@@ -99,10 +99,10 @@ func TestSessionIDFromFile(t *testing.T) {
 }
 
 func TestPartKey(t *testing.T) {
-	if got := partKey(testSessionID, 0); got != "sessions/"+testSessionID+"/parts/part-000000.jsonl.gz" {
+	if got := partKey(testSessionID, 0); got != "sessions/"+testSessionID+"/parts/part-000000000000.jsonl.gz" {
 		t.Fatalf("partKey(0) = %q", got)
 	}
-	if got := partKey(testSessionID, 41); got != "sessions/"+testSessionID+"/parts/part-000041.jsonl.gz" {
+	if got := partKey(testSessionID, 41); got != "sessions/"+testSessionID+"/parts/part-000000000041.jsonl.gz" {
 		t.Fatalf("partKey(41) = %q", got)
 	}
 }

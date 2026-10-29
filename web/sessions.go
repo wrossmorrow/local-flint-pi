@@ -29,8 +29,10 @@ const (
 	defaultSessionMaxPartBytes = 5 * 1024 * 1024
 	// partKeyFormat names an uploaded part. The number is the zero-padded
 	// byte offset in the session file at which the part begins. Parts live in
-	// a parts/ sub-folder of the session prefix.
-	partKeyFormat = "sessions/%s/parts/part-%06d.jsonl.gz"
+	// a parts/ sub-folder of the session prefix; the padding is wide enough
+	// that the names stay fixed-width and ordered for the lifetime of a
+	// session.
+	partKeyFormat = "sessions/%s/parts/part-%012d.jsonl.gz"
 	// closedKeyFormat is the shutdown marker for a session.
 	closedKeyFormat = "sessions/%s/_closed"
 	// metadataKeyFormat is the session metadata object written at startup and
