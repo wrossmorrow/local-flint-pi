@@ -271,9 +271,32 @@ func (u *sessionUploader) Flush(ctx context.Context, ref *sessionRef) (*sessionS
 		st = &sessionState{sessionKey: key, hash: sha256.New()}
 		u.sessions[key] = st
 		st.path = ref.Path
-		meta := newSessionMetadata(ref, key)
-		st.metadata = meta
-		b, mErr := json.Marshal(meta)
+		// At session start, check for an existing metadata object and adopt it
+		// (e.g. when the server comes back up mid-session); updates are otherwise
+		// non-destructive, since close only overwrites the end-time fields.
+		meta := &sessionMetadata{SessionID: key}
+		if existing, err := u.store.Get(ctx, metadataKey(key)); err == nil {
+			if err := json.Unmarshal(existing, meta); err == nil {
+				st.metadata = meta
+			}
+		}
+		if st.metadata == nil {
+			st.metadata = meta
+		}
+		m := st.metadata
+		m.SessionName = sessionNameFromState(ref.State)
+		m.Repo = ref.Repo
+		m.AgentEnvironment = ref.AgentEnvironment
+		m.ModelConfig = modelConfigFromState(ref.State)
+		m.AgentIdentity = ref.AgentIdentity
+		m.ClientHost = ref.ClientHost
+		m.StartedAt = time.Now().UTC().Format(time.RFC3339)
+		m.EndedAt = ""
+		m.EndReason = ""
+		m.Tokens = nil
+		m.ToolCalls = 0
+		m.MessageCounts = nil
+		b, mErr := json.Marshal(m)
 		if mErr != nil {
 			return st, mErr
 		}
@@ -446,21 +469,6 @@ func gzipBytes(b []byte) ([]byte, error) {
 
 func (st *sessionState) hashHex() string {
 	return hex.EncodeToString(st.hash.Sum(nil))
-}
-
-// newSessionMetadata builds the startup metadata for a session from its live
-// session ref. Agent environment values are supplied via env and are optional.
-func newSessionMetadata(ref *sessionRef, key string) *sessionMetadata {
-	return &sessionMetadata{
-		SessionID:        key,
-		SessionName:      sessionNameFromState(ref.State),
-		Repo:             ref.Repo,
-		AgentEnvironment: ref.AgentEnvironment,
-		ModelConfig:      modelConfigFromState(ref.State),
-		AgentIdentity:    ref.AgentIdentity,
-		ClientHost:       ref.ClientHost,
-		StartedAt:        time.Now().UTC().Format(time.RFC3339),
-	}
 }
 
 // sessionNameFromState reads the human-readable session name from a get_state
