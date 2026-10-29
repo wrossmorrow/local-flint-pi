@@ -11,6 +11,11 @@ RUN go build -o /web .
 
 FROM node:${NODE_TAG} AS agent
 
+# git short sha of the source tree the pi web interface binary was built from;
+# surfaced to the server as PI_WEB_BUILD_SHA (see GET /api/info)
+ARG BUILD_SHA=unknown
+ENV PI_WEB_BUILD_SHA=$BUILD_SHA
+
 ENV PAGER=cat GIT_PAGER=cat LESS=-FRX GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 

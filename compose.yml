@@ -71,6 +71,8 @@ services:
     build:
       context: ./
       target: ${AGENT_TARGET:-agent}
+      args:
+        BUILD_SHA: ${BUILD_SHA:-unknown}
     depends_on:
       proxy:
         condition: service_started
