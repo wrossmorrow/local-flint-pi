@@ -166,6 +166,16 @@ func (c *RpcClient) handleExit(err error) {
 		ch <- RpcCommandResult{Success: false, Error: msg}
 	}
 
+	// The pi child process has exited, so the session is over from the browser's
+	// perspective. Broadcast the closure to live subscribers before closing
+	// their channels, so a browser can render the end of the session the same
+	// way the /close trigger does (via the shutdown close sweep).
+	endReason := "closed"
+	if err != nil {
+		endReason = "crashed"
+	}
+	c.broadcast(Event{"type": "session_closed", "endReason": endReason})
+
 	c.subsMu.Lock()
 	for ch := range c.subs {
 		delete(c.subs, ch)

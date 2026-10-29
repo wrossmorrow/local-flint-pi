@@ -381,6 +381,15 @@ function apply(ev, known) {
       break;
     case "agent_end":
       break;
+    case "session_closed":
+      // the pi child process exited (e.g. harness shutdown without /close);
+      // mirror the /close handling: stop the session, drop the composer, show
+      // the closure
+      S.closed = true;
+      setStreaming(false);
+      input.value = ""; autoGrow(); paintEditorChrome();
+      notice("info", ev.endReason && ev.endReason !== "closed" ? `session closed (${ev.endReason})` : "session closed");
+      break;
     case "agent_settled":
       if (S.abortRequested) notice("warn", "interrupted");
       S.abortRequested = false;

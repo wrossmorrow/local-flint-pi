@@ -95,6 +95,20 @@ func TestRememberReplaysQueueUpdate(t *testing.T) {
 	}
 }
 
+func TestHandleExitBroadcastsSessionClosed(t *testing.T) {
+	c := NewRpcClient("", nil, nil)
+	ch, unsub := c.Subscribe()
+	defer unsub()
+	c.handleExit(nil)
+	ev := <-ch
+	if ev["type"] != "session_closed" {
+		t.Fatalf("event = %v, want session_closed", ev["type"])
+	}
+	if ev["endReason"] != "closed" {
+		t.Fatalf("event endReason = %v, want closed", ev["endReason"])
+	}
+}
+
 func TestGuard(t *testing.T) {
 	s := NewServer(NewRpcClient("", nil, nil), []string{"devbox.local"}, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
 	h := s.guard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
