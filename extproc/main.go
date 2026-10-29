@@ -20,6 +20,9 @@ import (
 	"os"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	ep "github.com/wrossmorrow/envoy-extproc-sdk-go"
 )
 
@@ -209,6 +212,18 @@ func (s *tokenCounterRequestProcessor) ProcessResponseTrailers(ctx *ep.RequestCo
 }
 
 func (s *tokenCounterRequestProcessor) ErrorHandler(ctx *ep.RequestContext, phase int, err error) {
+	// the SDK routes stream cancellations (client going away mid-stream, envoy
+	// aborting) through the error handler so the implementation can clean up
+	// state for the in-flight phase; the SDK ends such streams gracefully rather
+	// than failing them, so a cancellation is not a processing error here
+	if status.Code(err) == codes.Canceled || errors.Is(err, context.Canceled) {
+		s.logger.Debug("stream cancelled",
+			slog.String("phase", ep.RequestPhaseToString(phase)),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
 	s.logger.Error("error in phase", slog.String("phase", ep.RequestPhaseToString(phase)), slog.String("error", err.Error()))
 
 	// mark the per-stream timing as errored; the finalized-with-error record

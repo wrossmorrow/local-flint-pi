@@ -84,8 +84,8 @@ github.com/rogpeppe/go-internal v1.16.0 h1:O9DK+vNMDVGLr2BeZqmpLeMjiMNkuXfcqntWb
 github.com/rogpeppe/go-internal v1.16.0/go.mod h1:DrUVZyrJU+txYW5/1kwtXQSMFio52ZOxX7yM1VHvnxs=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/wrossmorrow/envoy-extproc-sdk-go v0.1.2 h1:FTRwnoQQmzVildsjKNPKWNrBlwKLl4a0C1rZkeA/IKs=
-github.com/wrossmorrow/envoy-extproc-sdk-go v0.1.2/go.mod h1:3sEHaTsZUy0KLL4MDE4ZipRVrYoakSc1eMkA5dAS8Ek=
+github.com/wrossmorrow/envoy-extproc-sdk-go v0.2.1 h1:gyaUT6felPvzKPVn343TNOaCUqd/hk3Jyc0vNo7vRjY=
+github.com/wrossmorrow/envoy-extproc-sdk-go v0.2.1/go.mod h1:3sEHaTsZUy0KLL4MDE4ZipRVrYoakSc1eMkA5dAS8Ek=
 github.com/zeebo/assert v1.3.0 h1:g7C04CbJuIDKNPFHmsk4hwZDO5O+kntRxzaUoNXj+IQ=
 github.com/zeebo/assert v1.3.0/go.mod h1:Pq9JiuJQpG8JLJdtkwrJESF0Foym2/D9XMU5ciN/wJ0=
 github.com/zeebo/xxh3 v1.1.0 h1:s7DLGDK45Dyfg7++yxI0khrfwq9661w9EN78eP/UZVs=
