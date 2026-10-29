@@ -34,7 +34,16 @@
   .switch input:checked + .slider { background: #238636; }
   .switch input:focus-visible + .slider { outline: 2px solid #58a6ff; outline-offset: 2px; }
   button.msg-tool-toggle { background: #21262d; color: #58a6ff; border: 1px solid #30363d; padding: 2px 8px; font-size: 11px; border-radius: 6px; cursor: pointer; align-self: flex-start; }
+  .msg p { margin: 0 0 8px; }
+  .msg p:last-child { margin-bottom: 0; }
+  .msg ul, .msg ol { margin: 0 0 8px; padding-left: 20px; }
+  .msg h1, .msg h2, .msg h3 { margin: 8px 0 4px; font-size: 14px; font-weight: 600; }
+  .msg pre { background: #161b22; border: 1px solid #21262d; padding: 8px; border-radius: 6px; overflow-x: auto; margin: 0 0 8px; }
+  .msg pre code { background: none; padding: 0; }
+  .msg blockquote { margin: 0 0 8px; padding-left: 12px; border-left: 2px solid #30363d; color: #8b949e; }
+  .msg a { color: #58a6ff; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 </head>
 <body>
 <header>
@@ -70,7 +79,15 @@ function textOf(content) {
   return out;
 }
 
-const TOOL_TEXT_LIMIT = 500;
+const TOOL_TEXT_LIMIT = 50;
+
+function md(text) {
+  const src = typeof text === "string" ? text : "";
+  const escaped = src.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  if (typeof marked === "undefined") return escaped;
+  const parsed = marked.parse(escaped, { async: false, breaks: true });
+  return typeof parsed === "string" ? parsed : escaped;
+}
 
 function toolDisplayText(name, args, result, expanded) {
   const full = "[tool] " + name + " " + JSON.stringify(args || {}) + "\n" + (result || "");
@@ -117,7 +134,7 @@ function doRender() {
     el.className = "msg " + e.type;
     if (e.type === "user") {
       el.className = "msg user";
-      el.textContent = e.text;
+      el.innerHTML = md(e.text);
     } else if (e.type === "assistant") {
       el.className = "msg assistant";
       if (e.thinking && state.showThinking) {
@@ -128,7 +145,7 @@ function doRender() {
       }
       if (e.text) {
         const txt = document.createElement("div");
-        txt.textContent = e.text;
+        txt.innerHTML = md(e.text);
         el.appendChild(txt);
       }
       for (const [id, tc] of Object.entries(e.toolCalls || {})) {
