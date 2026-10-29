@@ -47,6 +47,8 @@ type Server struct {
 	allowedHosts map[string]bool
 	logoPath     string
 	uploader     *sessionUploader
+	startedAt    time.Time
+	buildSha     string
 }
 
 func NewServer(rpc *RpcClient, allowedHosts []string, logoPath string, uploader *sessionUploader) *Server {
@@ -56,7 +58,8 @@ func NewServer(rpc *RpcClient, allowedHosts []string, logoPath string, uploader 
 			hosts[strings.ToLower(h)] = true
 		}
 	}
-	s := &Server{rpc: rpc, allowedHosts: hosts, logoPath: logoPath}
+	s := &Server{rpc: rpc, allowedHosts: hosts, logoPath: logoPath, startedAt: time.Now()}
+	s.buildSha = os.Getenv("PI_WEB_BUILD_SHA")
 	if uploader == nil {
 		uploader = newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil })
 	}
@@ -205,11 +208,27 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, map[string]any{"ok": status == http.StatusOK})
 }
 
-// handleInfo reports things the footer shows that pi's RPC does not expose:
-// the working directory and its git branch.
+// handleInfo reports the server runtime info the UI reads and refreshes on:
+// the build SHA, process start time and uptime, and the live session identity,
+// plus the working directory and its git branch that the footer shows. The UI
+// polls this and re-syncs when the build SHA changes (i.e. the server restarted
+// onto a new build).
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	cwd, _ := os.Getwd()
-	writeJSON(w, http.StatusOK, map[string]any{"cwd": cwd, "branch": gitBranch(cwd)})
+	info := map[string]any{
+		"cwd":           cwd,
+		"branch":        gitBranch(cwd),
+		"buildSha":      s.buildSha,
+		"startedAt":     s.startedAt.UTC().Format(time.RFC3339),
+		"uptimeSeconds": int64(time.Since(s.startedAt) / time.Second),
+		"sessionId":     "",
+		"sessionName":   "",
+	}
+	if ref, err := s.SessionRef(r.Context()); err == nil && ref != nil {
+		info["sessionId"] = sessionIDFromFile(ref.Path)
+		info["sessionName"] = sessionNameFromState(ref.State)
+	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 func gitBranch(dir string) string {

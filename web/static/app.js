@@ -56,7 +56,7 @@ async function closeSessionNow() {
 const S = {
   state: null,          // get_state data
   stats: null,          // get_session_stats data
-  info: {},             // {cwd, branch}
+  info: {},             // {cwd, branch, buildSha, startedAt, uptimeSeconds, sessionId, sessionName}
   levels: ["off"],
   commands: [],         // get_commands
   streaming: false,
@@ -612,6 +612,7 @@ async function resync() {
     cmd("get_state"), cmd("get_messages"), fetch("/api/info").then((r) => r.json()).catch(() => ({})),
   ]);
   S.info = info || {};
+  lastBuildSha = S.info.buildSha || "";
   if (st.success) S.state = st.data;
   clearTranscript();
   S.history = [];
@@ -645,6 +646,28 @@ function refreshStats() {
     if (st.success) S.state = st.data;
     if (ss.success) S.stats = ss.data;
     paintFooter();
+  }, 150);
+}
+
+let infoTimer = 0;
+let lastBuildSha = "";
+const INFO_POLL_MS = 5000;
+function refreshInfo() {
+  clearTimeout(infoTimer);
+  infoTimer = setTimeout(async () => {
+    try {
+      const r = await fetch("/api/info");
+      const info = await r.json().catch(() => ({}));
+      if (r.ok) {
+        const sha = info.buildSha || "";
+        const changed = sha !== lastBuildSha;
+        lastBuildSha = sha;
+        S.info = { ...S.info, ...info };
+        if (changed && sha) resync();
+        else paintFooter();
+      }
+    } catch (e) { /* transient failure: keep the last good info */ }
+    infoTimer = setTimeout(refreshInfo, INFO_POLL_MS);
   }, 150);
 }
 
@@ -1218,4 +1241,5 @@ function showEmpty() {
 
 paintFooter();
 connect();
+refreshInfo();
 input.focus();

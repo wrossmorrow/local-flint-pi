@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -174,5 +175,48 @@ func TestCloseEndpointRequiresSession(t *testing.T) {
 	s.Routes().ServeHTTP(w, r)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d (%s)", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+}
+
+func TestInfoEndpoint(t *testing.T) {
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
+	s.buildSha = "deadbeefcafe"
+	s.startedAt = time.Now().Add(-2 * time.Minute)
+	r := httptest.NewRequest("GET", "/api/info", nil)
+	r.Host = "localhost"
+	w := httptest.NewRecorder()
+	s.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (%s)", w.Code, http.StatusOK, w.Body.String())
+	}
+	var info map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &info); err != nil {
+		t.Fatalf("bad json: %v (%s)", err, w.Body.String())
+	}
+	if got, want := info["buildSha"], "deadbeefcafe"; got != want {
+		t.Fatalf("buildSha = %v, want %s", got, want)
+	}
+	if _, ok := info["cwd"].(string); !ok {
+		t.Fatalf("cwd = %v, want string", info["cwd"])
+	}
+	startedAt, ok := info["startedAt"].(string)
+	if !ok {
+		t.Fatalf("startedAt = %v, want string", info["startedAt"])
+	}
+	if _, err := time.Parse(time.RFC3339, startedAt); err != nil {
+		t.Fatalf("startedAt = %q: %v", startedAt, err)
+	}
+	uptime, ok := info["uptimeSeconds"].(float64)
+	if !ok {
+		t.Fatalf("uptimeSeconds = %v, want number", info["uptimeSeconds"])
+	}
+	if uptime < 119 {
+		t.Fatalf("uptimeSeconds = %v, want >= 119 (started 2m ago)", uptime)
+	}
+	if got, want := info["sessionId"], ""; got != want {
+		t.Fatalf("sessionId = %v, want %s", got, want)
+	}
+	if got, want := info["sessionName"], ""; got != want {
+		t.Fatalf("sessionName = %v, want %s", got, want)
 	}
 }
