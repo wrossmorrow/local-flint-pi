@@ -33,3 +33,14 @@ You are running in a sandboxed container with no access to the host.
 - Never modify `.github/workflows/` or other CI configuration. If a CI check fails
   because of its own rules (not your code), stop and report what the check requires.
 
+# Protobuf
+
+- `buf` and `protoc` are installed. If the repo has a `buf.yaml`, run `buf lint` and
+  `buf format -d` (diff only) on changed `.proto` files before committing.
+- Check API compatibility with `buf breaking --against '.git#branch=main'`; report any
+  breaking change in the PR description rather than working around it.
+- If the repo has no `buf.yaml`, don't add one and don't "fix" lint findings unless asked.
+  You can report this is missing if using protobuf to the maintainer, they can add.
+- Never rename, renumber, or remove fields in existing messages to satisfy a linter;
+  field numbers and names are the wire and JSON contract.
+

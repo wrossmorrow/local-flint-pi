@@ -8,3 +8,5 @@
   `go run ./... > /tmp/server.log 2>&1 & echo $! > /tmp/server.pid`
   then `kill "$(cat /tmp/server.pid)"`. Only kill processes you started.
 - Use a fixed port from the repo's config or tests; don't scan for ports.
+- Regenerate code with buf generate (or protoc); never hand-edit generated *.pb.go 
+  files.
