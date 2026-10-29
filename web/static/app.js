@@ -65,6 +65,7 @@ const T = {
   tools: new Map(),     // toolCallId -> tool view
   dirty: new Set(),
 };
+let bashSeq = 0;
 
 // ---------------------------------------------------------------- markdown
 
@@ -929,7 +930,7 @@ async function submit(mode) {
     const command = text.replace(/^!+/, "").trim();
     if (!command) return;
     input.value = ""; autoGrow(); paintEditorChrome();
-    const t = toolView("bash-" + Date.now(), "!", { command }, { bash: true });
+    const t = toolView("bash-" + ++bashSeq, "!", { command }, { bash: true });
     append(el("div", "entry")).append(t.el);
     t.status = "running"; t.started = Date.now(); t.paint();
     S.bashRunning = true; paintSpinner(); paintEditorChrome();

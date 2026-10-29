@@ -65,6 +65,33 @@ func TestRememberReplaysOpenDialogsAndStatus(t *testing.T) {
 	}
 }
 
+func TestRememberReplaysQueueUpdate(t *testing.T) {
+	c := NewRpcClient("", nil, nil)
+	c.broadcast(Event{"type": "queue_update", "steering": []any{"steer the agent"}, "followUp": []any{"follow up later"}})
+	ch, unsub := c.Subscribe()
+	defer unsub()
+	ev := <-ch
+	if ev["type"] != "queue_update" {
+		t.Fatalf("replayed event = %v, want queue_update", ev)
+	}
+	q, ok := ev["steering"].([]any)
+	if !ok || len(q) != 1 || q[0] != "steer the agent" {
+		t.Fatalf("steering replay = %v", q)
+	}
+	f, ok := ev["followUp"].([]any)
+	if !ok || len(f) != 1 || f[0] != "follow up later" {
+		t.Fatalf("followUp replay = %v", f)
+	}
+
+	// a fresh subscriber without a new queue_update must not replay a stale one
+	c.broadcast(Event{"type": "queue_update", "steering": []any{}, "followUp": []any{}})
+	ch2, unsub2 := c.Subscribe()
+	defer unsub2()
+	if ev := <-ch2; ev["type"] != "queue_update" {
+		t.Fatalf("second replay = %v, want queue_update", ev)
+	}
+}
+
 func TestGuard(t *testing.T) {
 	s := NewServer(NewRpcClient("", nil, nil), []string{"devbox.local"}, "")
 	h := s.guard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
@@ -97,6 +124,18 @@ func TestGuard(t *testing.T) {
 				t.Fatalf("status = %d, want %d", w.Code, tc.want)
 			}
 		})
+	}
+}
+
+func TestExtensionUIUnknownDialogIs404(t *testing.T) {
+	s := NewServer(NewRpcClient("", nil, nil), nil, "")
+	r := httptest.NewRequest("POST", "/api/extension-ui/response", strings.NewReader(`{"id":"nope","value":"x"}`))
+	r.Host = "localhost"
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
 	}
 }
 

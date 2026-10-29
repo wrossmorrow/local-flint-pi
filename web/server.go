@@ -264,8 +264,12 @@ func (s *Server) handleExtensionUIResponse(w http.ResponseWriter, r *http.Reques
 		Confirmed *bool   `json:"confirmed"`
 		Cancelled bool    `json:"cancelled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<20)).Decode(&req); err != nil || req.ID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "bad request"})
+		return
+	}
+	if !s.rpc.DialogOpen(req.ID) {
+		writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": "unknown dialog"})
 		return
 	}
 	response := map[string]any{"id": req.ID}

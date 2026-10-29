@@ -71,6 +71,7 @@ type RpcClient struct {
 	dialogs map[string]Event // open dialog requests, by id
 	order   []string         // dialog ids in arrival order
 	ui      map[string]Event // latest setStatus/setWidget/setTitle, by key
+	queue   Event            // latest queue_update, replayed to new subscribers
 
 	exitCh chan error
 }
@@ -86,6 +87,7 @@ func NewRpcClient(bin string, args []string, env []string) *RpcClient {
 		subs:    map[chan Event]struct{}{},
 		dialogs: map[string]Event{},
 		ui:      map[string]Event{},
+		queue:   Event{"type": ""},
 		exitCh:  make(chan error, 1),
 	}
 }
@@ -262,8 +264,13 @@ func (c *RpcClient) broadcast(ev Event) {
 }
 
 // remember tracks state a freshly (re)connected browser needs that it cannot
-// get from any RPC command: open dialogs and extension status/widget/title.
+// get from any RPC command: open dialogs and extension status/widget/title, and
+// the latest steering/follow-up queue.
 func (c *RpcClient) remember(ev Event) {
+	if ev["type"] == "queue_update" {
+		c.queue = ev
+		return
+	}
 	if ev["type"] != "extension_ui_request" {
 		return
 	}
@@ -329,6 +336,9 @@ func (c *RpcClient) Subscribe() (<-chan Event, func()) {
 	for _, id := range c.order {
 		ch <- c.dialogs[id]
 	}
+	if c.queue["type"] != "" {
+		ch <- c.queue
+	}
 	if c.isDead() {
 		close(ch)
 	} else {
@@ -378,6 +388,14 @@ func (c *RpcClient) Send(ctx context.Context, command map[string]any) (*RpcComma
 		c.pendingMu.Unlock()
 		return nil, ctx.Err()
 	}
+}
+
+// DialogOpen reports whether a dialog is currently pending for `id`.
+func (c *RpcClient) DialogOpen(id string) bool {
+	c.subsMu.Lock()
+	defer c.subsMu.Unlock()
+	_, ok := c.dialogs[id]
+	return ok
 }
 
 // RespondDialog answers an open extension UI dialog. pi itself applies any
