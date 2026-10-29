@@ -34,6 +34,7 @@
   <span class="title">pi</span>
   <span id="status">connecting…</span>
   <span class="spacer"></span>
+  <button id="thinkingToggle">Thinking: off</button>
   <button id="abort" disabled>Abort</button>
   <button id="clearQueue" disabled>Clear queue</button>
 </header>
@@ -45,7 +46,7 @@
   <button id="send" disabled>Send</button>
 </footer>
 <script>
-const state = { streaming: false, model: null, contextUsage: null };
+const state = { streaming: false, model: null, contextUsage: null, showThinking: false };
 const entries = [];
 
 function textOf(content) {
@@ -58,7 +59,13 @@ function textOf(content) {
   return out;
 }
 
+let renderScheduled = false;
 function render() {
+  if (renderScheduled) return;
+  renderScheduled = true;
+  setTimeout(() => { renderScheduled = false; doRender(); }, 16);
+}
+function doRender() {
   const log = document.getElementById("log");
   log.innerHTML = "";
   if (entries.length === 0) {
@@ -75,7 +82,7 @@ function render() {
       el.textContent = e.text;
     } else if (e.type === "assistant") {
       el.className = "msg assistant";
-      if (e.thinking) {
+      if (e.thinking && state.showThinking) {
         const th = document.createElement("div");
         th.className = "msg thinking";
         th.textContent = e.thinking;
@@ -209,7 +216,7 @@ function handleEvent(ev) {
       render();
     } else if (evt.type === "thinking_delta" && entry && entry.type === "assistant") {
       entry.thinking += evt.delta;
-      render();
+      if (state.showThinking) render();
     } else if (evt.type === "toolcall_start" && entry && entry.type === "assistant") {
       entry.toolCalls[evt.id] = { name: evt.toolName, args: {}, status: "running" };
       render();
@@ -260,7 +267,9 @@ function handleEvent(ev) {
     } else if (d.method === "setStatus") {
       setStatus(d.statusText || "idle");
     } else if (d.method === "set_editor_text") {
-      document.getElementById("prompt").value = d.text || "";
+      const p = document.getElementById("prompt");
+      p.value = d.text || "";
+      autoGrow(p);
       render();
     }
   } else if (t === "session_info_changed") {
@@ -295,6 +304,7 @@ function sendPrompt() {
     if (d.error) alert("Error: " + d.error);
   });
   textarea.value = "";
+  autoGrow(textarea);
 }
 
 function sendAbort() {
@@ -309,7 +319,20 @@ const prompt = document.getElementById("prompt");
 const send = document.getElementById("send");
 const abort = document.getElementById("abort");
 const clearQueueBtn = document.getElementById("clearQueue");
+const thinkingToggle = document.getElementById("thinkingToggle");
 
+function autoGrow(t) {
+  t.style.height = "auto";
+  t.style.height = Math.min(t.scrollHeight, 400) + "px";
+}
+
+thinkingToggle.addEventListener("change", () => {
+  state.showThinking = thinkingToggle.checked;
+  thinkingToggle.textContent = thinkingToggle.checked ? "Thinking: on" : "Thinking: off";
+  render();
+});
+
+prompt.addEventListener("input", () => autoGrow(prompt));
 prompt.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
