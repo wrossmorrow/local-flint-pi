@@ -149,8 +149,12 @@ func main() {
 	}
 
 	// Shut the HTTP server down when the pi child process exits, and close out
-	// any in-flight session uploads first.
+	// any in-flight session uploads first. The goroutine owns the whole shutdown
+	// sequence; main waits for it on the way out (see below) so the final
+	// session flush and _closed close marker cannot be cut off mid-flush.
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		err := rpc.Wait()
 		if err != nil {
 			log.Printf("pi rpc process exited: %v", err)
@@ -180,4 +184,9 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("http server error: %v", err)
 	}
+	// ListenAndServe returns as soon as Shutdown completes, which is *before* the
+	// shutdown goroutine above has run the final session upload close. Wait for
+	// that sequence to finish before exiting, or the final flush can be cut off
+	// mid-upload and the sessions/<id>/_closed marker never gets written.
+	<-shutdownDone
 }
