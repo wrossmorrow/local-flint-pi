@@ -27,6 +27,13 @@
   button:disabled { opacity: 0.5; cursor: default; }
   #log { display: flex; flex-direction: column; gap: 8px; }
   .empty { color: #8b949e; text-align: center; margin-top: 40vh; font-size: 14px; }
+  .switch { position: relative; display: inline-block; width: 36px; height: 20px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #30363d; border-radius: 20px; transition: 0.2s; cursor: pointer; }
+  .switch .slider::before { content: ""; position: absolute; width: 14px; height: 14px; left: 3px; bottom: 3px; background: #e6edf3; border-radius: 50%; transition: 0.2s; }
+  .switch input:checked + .slider { background: #238636; }
+  .switch input:focus-visible + .slider { outline: 2px solid #58a6ff; outline-offset: 2px; }
+  button.msg-tool-toggle { background: #21262d; color: #58a6ff; border: 1px solid #30363d; padding: 2px 8px; font-size: 11px; border-radius: 6px; cursor: pointer; align-self: flex-start; }
 </style>
 </head>
 <body>
@@ -34,7 +41,11 @@
   <span class="title">pi</span>
   <span id="status">connecting…</span>
   <span class="spacer"></span>
-  <button id="thinkingToggle">Thinking: off</button>
+  <label class="switch">
+    <input type="checkbox" id="thinkingToggle" />
+    <span class="slider" aria-hidden="true"></span>
+  </label>
+  <span id="thinkingLabel">Thinking: off</span>
   <button id="abort" disabled>Abort</button>
   <button id="clearQueue" disabled>Clear queue</button>
 </header>
@@ -58,6 +69,33 @@ function textOf(content) {
   }
   return out;
 }
+
+const TOOL_TEXT_LIMIT = 500;
+
+function toolDisplayText(name, args, result, expanded) {
+  const full = "[tool] " + name + " " + JSON.stringify(args || {}) + "\n" + (result || "");
+  if (expanded || full.length <= TOOL_TEXT_LIMIT) return full;
+  return full.slice(0, TOOL_TEXT_LIMIT) + "\n… [truncated]";
+}
+
+function toggleTool(key) {
+  for (const e of entries) {
+    if (e.type === "assistant") {
+      const tc = e.toolCalls && e.toolCalls[key];
+      if (tc) { tc.expanded = !tc.expanded; render(); return; }
+    } else if (e.type === "tool" && e.toolCallId === key) {
+      e.expanded = !e.expanded; render(); return;
+    } else if (e.type === "bash" && e.command === key) {
+      e.expanded = !e.expanded; render(); return;
+    }
+  }
+}
+
+document.getElementById("log").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-tool-expand]");
+  if (!btn) return;
+  toggleTool(btn.getAttribute("data-tool-expand"));
+});
 
 let renderScheduled = false;
 function render() {
@@ -93,23 +131,40 @@ function doRender() {
         txt.textContent = e.text;
         el.appendChild(txt);
       }
-      for (const tc of Object.values(e.toolCalls || {})) {
+      for (const [id, tc] of Object.entries(e.toolCalls || {})) {
         const call = document.createElement("div");
         call.className = "msg tool" + (tc.isError ? " error" : "");
-        call.textContent = "[tool] " + tc.name + " " + JSON.stringify(tc.args || {});
-        if (tc.resultText) call.textContent += "\n" + tc.resultText;
+        call.textContent = toolDisplayText(tc.name, tc.args, tc.resultText, !!tc.expanded);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "msg-tool-toggle";
+        btn.dataset.toolExpand = id;
+        btn.textContent = tc.expanded ? "Show less" : "Show more";
+        call.appendChild(btn);
         el.appendChild(call);
       }
     } else if (e.type === "tool") {
       const call = document.createElement("div");
       call.className = "msg tool" + (e.isError ? " error" : "");
-      call.textContent = "[tool] " + e.toolName + " " + JSON.stringify(e.args || {}) + "\n" + e.resultText;
+      call.textContent = toolDisplayText(e.toolName, e.args, e.resultText, !!e.expanded);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "msg-tool-toggle";
+      btn.dataset.toolExpand = e.toolCallId;
+      btn.textContent = e.expanded ? "Show less" : "Show more";
+      call.appendChild(btn);
       el.appendChild(call);
     } else if (e.type === "bash") {
       const call = document.createElement("div");
       call.className = "msg tool";
       call.textContent = "$ " + e.command + "\n" + e.output;
       if (e.isError) call.className = "msg tool error";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "msg-tool-toggle";
+      btn.dataset.toolExpand = e.command;
+      btn.textContent = e.expanded ? "Show less" : "Show more";
+      call.appendChild(btn);
       el.appendChild(call);
     } else if (e.type === "system") {
       const sys = document.createElement("div");
@@ -206,7 +261,7 @@ function handleEvent(ev) {
     } else if (m.role === "assistant") {
       addEntry({ type: "assistant", text: "", thinking: "", toolCalls: {}, complete: false });
     } else if (m.role === "bashExecution") {
-      addEntry({ type: "bash", command: m.command, output: m.output || "", isError: false });
+      addEntry({ type: "bash", command: m.command, output: m.output || "", isError: false, expanded: false });
     }
   } else if (t === "message_update") {
     const evt = ev.assistantMessageEvent || {};
@@ -218,7 +273,7 @@ function handleEvent(ev) {
       entry.thinking += evt.delta;
       if (state.showThinking) render();
     } else if (evt.type === "toolcall_start" && entry && entry.type === "assistant") {
-      entry.toolCalls[evt.id] = { name: evt.toolName, args: {}, status: "running" };
+      entry.toolCalls[evt.id] = { name: evt.toolName, args: {}, status: "running", expanded: false };
       render();
     } else if (evt.type === "toolcall_end" && entry && entry.type === "assistant" && entry.toolCalls[evt.id]) {
       entry.toolCalls[evt.id].args = evt.toolCall ? evt.toolCall.arguments : entry.toolCalls[evt.id].args;
@@ -235,7 +290,7 @@ function handleEvent(ev) {
         existing.name = ev.toolName;
         existing.args = ev.args || existing.args;
       } else {
-        entry.toolCalls[ev.toolCallId] = { name: ev.toolName, args: ev.args || {}, status: "running" };
+        entry.toolCalls[ev.toolCallId] = { name: ev.toolName, args: ev.args || {}, status: "running", expanded: false };
       }
       render();
     }
@@ -251,7 +306,7 @@ function handleEvent(ev) {
         call.resultText = resultText;
       }
     } else {
-      addEntry({ type: "tool", toolCallId: ev.toolCallId, toolName: ev.toolName, args: {}, resultText, isError });
+      addEntry({ type: "tool", toolCallId: ev.toolCallId, toolName: ev.toolName, args: {}, resultText, isError, expanded: false });
     }
     render();
   } else if (t === "bash_execution_update") {
@@ -320,17 +375,23 @@ const send = document.getElementById("send");
 const abort = document.getElementById("abort");
 const clearQueueBtn = document.getElementById("clearQueue");
 const thinkingToggle = document.getElementById("thinkingToggle");
+const thinkingLabel = document.getElementById("thinkingLabel");
 
 function autoGrow(t) {
   t.style.height = "auto";
   t.style.height = Math.min(t.scrollHeight, 400) + "px";
 }
 
+function syncThinkingToggle() {
+  thinkingLabel.textContent = thinkingToggle.checked ? "Thinking: on" : "Thinking: off";
+}
+
 thinkingToggle.addEventListener("change", () => {
   state.showThinking = thinkingToggle.checked;
-  thinkingToggle.textContent = thinkingToggle.checked ? "Thinking: on" : "Thinking: off";
+  syncThinkingToggle();
   render();
 });
+syncThinkingToggle();
 
 prompt.addEventListener("input", () => autoGrow(prompt));
 prompt.addEventListener("keydown", (e) => {
