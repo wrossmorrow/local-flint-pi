@@ -80,6 +80,8 @@ services:
         condition: service_healthy
       token: 
         condition: service_healthy
+      web-gateway:
+        condition: service_started
     environment:
       HTTP_PROXY: http://proxy:3128
       HTTPS_PROXY: http://proxy:3128
@@ -91,6 +93,10 @@ services:
       GITHUB_APP_USER_ID: ${GITHUB_APP_USER_ID:?}
       GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
       REC_API_KEY: ${REC_API_KEY:?}
+      # the pi web interface serves on all interfaces inside the container so the
+      # web-gateway (socat forwarder) can reach it over the sandbox network
+      PI_WEB_HOST: 0.0.0.0
+      PI_WEB_PORT: ${PI_WEB_PORT:-8787}
       REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11005/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-32768}}'
       PI_CODING_AGENT_DIR: /home/node/.pi
       PI_SKIP_VERSION_CHECK: "1"
@@ -108,8 +114,20 @@ services:
       - sandbox
     stdin_open: true
     tty: true
+
+  # host-facing gateway for the pi web interface: socat TCP forwarder that
+  # listens on the host and forwards into the agent's web server. The agent sits
+  # on the internal `sandbox` network and cannot publish host ports itself, so
+  # the forwarder owns the published port.
+  web-gateway:
+    image: alpine/socat
+    command: tcp-listen:8787,fork,reuseaddr tcp-connect:agent:8787
+    networks:
+      - sandbox
+      - default
     ports:
       - "127.0.0.1:${PI_WEB_PORT:-8787}:8787"
+    restart: always
 
 secrets:
   gh_private_key:
