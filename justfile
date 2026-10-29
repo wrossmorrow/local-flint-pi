@@ -58,7 +58,7 @@ up repo toolchain="agent" *flags="": serve
     REC_API_KEY=$( rec auth token ) \
     AGENT_IMAGE=${AGENT_IMAGE:-{{ image_base }}-{{ toolchain }}} \
     AGENT_TARGET=${AGENT_TARGET:-{{ toolchain }}} \
-        docker compose run --rm agent {{ flags }}
+        docker compose up {{ flags }}
 
 # bring down compose setup (not flint, see just stop)
 down repo *flags="":
@@ -77,3 +77,7 @@ flush-usage-table host="127.0.0.1" port="9091":
         -H 'content-type: application/json'\
         -H 'accept: application/json' \
         | jq .
+
+# run the web UI against a scripted fake pi (no model or container needed)
+web-dev port="8787":
+    cd web && PI_BIN=node PI_ARGS=testdata/fake-pi.mjs PI_LOGO_PATH=../rec-ext/logo-pixels.json PI_WEB_PORT={{ port }} go run .
