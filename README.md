@@ -36,6 +36,11 @@ API (all JSON; writes require `Content-Type: application/json`):
 - `POST /api/cmd` — send one allowlisted RPC command, e.g. `{"type":"prompt","message":"..."}`, `{"type":"steer",...}`, `{"type":"set_thinking_level","level":"high"}`; returns pi's `{success, error?, data?}`.
 - `POST /api/extension-ui/response` — answer a dialog (`{"id","value"}` / `{"id","confirmed"}` / `{"id","cancelled":true}`). pi applies dialog timeouts itself.
 - `GET /api/state`, `GET /api/stats` — `get_state` / `get_session_stats` passthroughs. `GET /api/info` — cwd and git branch. `GET /api/logo` — the rec header logo pixels (`PI_LOGO_PATH`).
+- `POST /api/flush` — force the session uploader to ship the current session's pending content now and report the result: `{success, sessionKey, finalOffset, partCount, hash, shipped}`. Also surfaced as the ⇅ button in the UI footer. Shutting down (SIGTERM/SIGINT or the pi child exiting) performs the same final flush and writes the close marker.
+
+Session files are uploaded to S3 (`sessions/<session-id>/part-<offset>.jsonl.gz`, gzipped JSONL) while the agent runs. The uploader periodically (default every 30s, `PI_WEB_S3_FLUSH_INTERVAL_SECONDS`) ships content the pi child has appended to its session file since the last shipped offset; a pending batch larger than `PI_WEB_S3_MAX_PART_BYTES` (default 5MB) is shipped immediately. Closing a session (flush endpoint, shutdown, or process exit) ships the rest and writes a `sessions/<session-id>/_closed` marker with the final offset, part count, content hash and status (`ok` or `error`).
+
+S3 is optional: when no bucket is configured (`AWS_S3_BUCKET_NAME`, fallback `WEB_AWS_S3_BUCKET_NAME`) the upload flow is inert. Credentials come from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (fallbacks `WEB_AWS_ACCESS_KEY_ID` / `WEB_AWS_SECRET_ACCESS_KEY`) and the region from `AWS_REGION` (fallback `WEB_AWS_REGION`, default `us-east-1`).
 
 Requests are only accepted with a loopback `Host` (add others with `PI_WEB_ALLOWED_HOSTS=host1,host2`) and a matching `Origin`, so other websites open in the browser can't drive the agent (DNS rebinding / cross-site POSTs).
 

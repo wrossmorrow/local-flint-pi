@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSlimEventDropsSnapshotsKeepsToolBlock(t *testing.T) {
@@ -93,7 +95,7 @@ func TestRememberReplaysQueueUpdate(t *testing.T) {
 }
 
 func TestGuard(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), []string{"devbox.local"}, "")
+	s := NewServer(NewRpcClient("", nil, nil), []string{"devbox.local"}, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil }))
 	h := s.guard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 
 	cases := []struct {
@@ -128,7 +130,7 @@ func TestGuard(t *testing.T) {
 }
 
 func TestExtensionUIUnknownDialogIs404(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), nil, "")
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil }))
 	r := httptest.NewRequest("POST", "/api/extension-ui/response", strings.NewReader(`{"id":"nope","value":"x"}`))
 	r.Host = "localhost"
 	r.Header.Set("Content-Type", "application/json")
@@ -140,7 +142,7 @@ func TestExtensionUIUnknownDialogIs404(t *testing.T) {
 }
 
 func TestCommandAllowlist(t *testing.T) {
-	s := NewServer(NewRpcClient("", nil, nil), nil, "")
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil }))
 	r := httptest.NewRequest("POST", "/api/cmd", strings.NewReader(`{"type":"export_html","outputPath":"/etc/x"}`))
 	r.Host = "localhost"
 	r.Header.Set("Content-Type", "application/json")
@@ -148,5 +150,17 @@ func TestCommandAllowlist(t *testing.T) {
 	s.Routes().ServeHTTP(w, r)
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "not allowed") {
 		t.Fatalf("got %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestFlushEndpointRequiresSession(t *testing.T) {
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil }))
+	r := httptest.NewRequest("POST", "/api/flush", strings.NewReader("{}"))
+	r.Host = "localhost"
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d (%s)", w.Code, http.StatusServiceUnavailable, w.Body.String())
 	}
 }

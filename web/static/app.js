@@ -1077,6 +1077,15 @@ $("#f-bell").addEventListener("click", async () => {
   S.bell = !S.bell; store.set("bell", S.bell); paintFooter();
 });
 
+// Upload the current session to S3 (gzipped JSONL parts) now, instead of
+// waiting for the periodic flush / shutdown close.
+$("#f-flush").addEventListener("click", async () => {
+  const r = await fetch("/api/flush", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.success) notice("error", "flush failed: " + (j.error || r.statusText));
+  else notice("info", `flushed session ${j.sessionKey ?? ""}: ${j.partCount ?? 0} parts, offset ${j.finalOffset ?? 0}`.trim());
+});
+
 function toggleView(cls) {
   document.body.classList.toggle(cls);
   store.set(cls, document.body.classList.contains(cls));

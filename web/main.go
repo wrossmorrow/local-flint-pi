@@ -15,13 +15,19 @@ import (
 
 // config holds the runtime configuration for the pi web interface.
 type config struct {
-	host         string
-	port         int
-	bin          string
-	args         []string
-	env          []string
-	allowedHosts []string
-	logoPath     string
+	host          string
+	port          int
+	bin           string
+	args          []string
+	env           []string
+	allowedHosts  []string
+	logoPath      string
+	bucket        string
+	accessKey     string
+	secretKey     string
+	region        string
+	flushInterval time.Duration
+	maxPartBytes  int64
 }
 
 // loadConfig reads the web interface configuration from the environment.
@@ -50,13 +56,19 @@ func loadConfig() (*config, error) {
 	env = append(env, "REC_API_KEY="+envOr("REC_API_KEY", ""))
 
 	return &config{
-		host:         host,
-		port:         port,
-		bin:          bin,
-		args:         args,
-		env:          env,
-		allowedHosts: strings.Split(os.Getenv("PI_WEB_ALLOWED_HOSTS"), ","),
-		logoPath:     envOr("PI_LOGO_PATH", "/opt/rec/logo-pixels.json"),
+		host:          host,
+		port:          port,
+		bin:           bin,
+		args:          args,
+		env:           env,
+		allowedHosts:  strings.Split(os.Getenv("PI_WEB_ALLOWED_HOSTS"), ","),
+		logoPath:      envOr("PI_LOGO_PATH", "/opt/rec/logo-pixels.json"),
+		bucket:        envOr("AWS_S3_BUCKET_NAME", envOr("WEB_AWS_S3_BUCKET_NAME", "")),
+		accessKey:     envOr("AWS_ACCESS_KEY_ID", envOr("WEB_AWS_ACCESS_KEY_ID", "")),
+		secretKey:     envOr("AWS_SECRET_ACCESS_KEY", envOr("WEB_AWS_SECRET_ACCESS_KEY", "")),
+		region:        envOr("AWS_REGION", envOr("WEB_AWS_REGION", "us-east-1")),
+		flushInterval: time.Duration(envIntOr("PI_WEB_S3_FLUSH_INTERVAL_SECONDS", 30)) * time.Second,
+		maxPartBytes:  envInt64Or("PI_WEB_S3_MAX_PART_BYTES", defaultSessionMaxPartBytes),
 	}, nil
 }
 
@@ -76,6 +88,15 @@ func envIntOr(key string, fallback int) int {
 	return fallback
 }
 
+func envInt64Or(key string, fallback int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
+
 func main() {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -87,7 +108,20 @@ func main() {
 		log.Fatalf("failed to start pi rpc client: %v", err)
 	}
 
-	server := NewServer(rpc, cfg.allowedHosts, cfg.logoPath)
+	var server *Server
+	var uploader *sessionUploader
+	if cfg.bucket != "" {
+		store, err := newS3Store(context.Background(), cfg.bucket, cfg.accessKey, cfg.secretKey, cfg.region)
+		if err != nil {
+			log.Fatalf("failed to create s3 store: %v", err)
+		}
+		uploader = newSessionUploader(store, cfg.flushInterval, cfg.maxPartBytes, nil)
+	}
+	server = NewServer(rpc, cfg.allowedHosts, cfg.logoPath, uploader)
+	if uploader != nil {
+		uploader.source = func(ctx context.Context) (string, error) { return server.SessionPath(ctx) }
+		uploader.Start(context.Background())
+	}
 
 	srv := &http.Server{
 		Addr:    cfg.host + ":" + strconv.Itoa(cfg.port),
@@ -95,16 +129,33 @@ func main() {
 	}
 
 	// Shut the HTTP server down when the pi child process exits or the server is
-	// shut down.
-	go func() {
-		if err := rpc.Wait(); err != nil {
-			log.Printf("pi rpc process exited: %v", err)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// shut down, and close out any in-flight session uploads first.
+	shutdownHTTP := func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
 			log.Printf("http shutdown error: %v", err)
 		}
+	}
+	closeSessions := func(ctx context.Context) {
+		if uploader == nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if err := uploader.Close(ctx); err != nil {
+			log.Printf("session upload close error: %v", err)
+		}
+	}
+
+	// Shut the HTTP server down when the pi child process exits, and close out
+	// any in-flight session uploads first.
+	go func() {
+		if err := rpc.Wait(); err != nil {
+			log.Printf("pi rpc process exited: %v", err)
+		}
+		shutdownHTTP(context.Background())
+		closeSessions(context.Background())
 	}()
 
 	sigCh := make(chan os.Signal, 1)
@@ -112,11 +163,8 @@ func main() {
 	go func() {
 		sig := <-sigCh
 		log.Printf("shutting down: %v", sig)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(ctx); err != nil {
-			log.Printf("http shutdown error: %v", err)
-		}
+		shutdownHTTP(context.Background())
+		closeSessions(context.Background())
 		if err := rpc.Stop(); err != nil {
 			log.Printf("failed to stop pi rpc child: %v", err)
 		}

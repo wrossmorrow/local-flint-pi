@@ -97,6 +97,11 @@ services:
       # web-gateway (socat forwarder) can reach it over the sandbox network
       PI_WEB_HOST: 0.0.0.0
       PI_WEB_PORT: ${PI_WEB_PORT:-8787}
+      # optional S3 session-file upload (no-op when the bucket is unset)
+      AWS_S3_BUCKET_NAME: ${WEB_AWS_S3_BUCKET_NAME:-}
+      AWS_ACCESS_KEY_ID: ${WEB_AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${WEB_AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${WEB_AWS_REGION:-us-east-1}
       REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11005/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-32768}}'
       PI_CODING_AGENT_DIR: /home/node/.pi
       PI_SKIP_VERSION_CHECK: "1"

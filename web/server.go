@@ -45,16 +45,43 @@ type Server struct {
 	rpc          *RpcClient
 	allowedHosts map[string]bool
 	logoPath     string
+	uploader     *sessionUploader
 }
 
-func NewServer(rpc *RpcClient, allowedHosts []string, logoPath string) *Server {
+func NewServer(rpc *RpcClient, allowedHosts []string, logoPath string, uploader *sessionUploader) *Server {
 	hosts := map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
 	for _, h := range allowedHosts {
 		if h = strings.TrimSpace(h); h != "" {
 			hosts[strings.ToLower(h)] = true
 		}
 	}
-	return &Server{rpc: rpc, allowedHosts: hosts, logoPath: logoPath}
+	s := &Server{rpc: rpc, allowedHosts: hosts, logoPath: logoPath}
+	if uploader == nil {
+		uploader = newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (string, error) { return "", nil })
+	}
+	s.uploader = uploader
+	return s
+}
+
+// SessionSource returns the function the session uploader uses to resolve the
+// current session file. The server owns the RpcClient, so it is the natural
+// source of truth for which session is live.
+func (s *Server) SessionSource() func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) { return s.SessionPath(ctx) }
+}
+
+// SessionPath resolves the current pi session file, which is what the session
+// uploader ships to object storage.
+func (s *Server) SessionPath(ctx context.Context) (string, error) {
+	data, err := s.rpc.State(ctx)
+	if err != nil {
+		return "", err
+	}
+	p, _ := data["sessionFile"].(string)
+	if p == "" {
+		return "", fmt.Errorf("pi reported no session file")
+	}
+	return p, nil
 }
 
 // Routes returns the HTTP handler for the web interface.
@@ -69,6 +96,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/stats", s.passthrough("get_session_stats"))
 	mux.HandleFunc("POST /api/cmd", s.handleCommand)
 	mux.HandleFunc("POST /api/extension-ui/response", s.handleExtensionUIResponse)
+	mux.HandleFunc("POST /api/flush", s.handleFlush)
 	return s.guard(mux)
 }
 
@@ -190,6 +218,36 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request, cmd map[string]any)
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// handleFlush ships everything in the current session since the last offset
+// and reports what was uploaded. The UI can call it to force an upload now;
+// the periodic ticker and shutdown close do the same automatically.
+func (s *Server) handleFlush(w http.ResponseWriter, r *http.Request) {
+	if !s.uploader.Enabled() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"success": false, "error": "s3 not configured"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), defaultCommandTimeout)
+	defer cancel()
+	path, err := s.SessionPath(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"success": false, "error": "session unavailable: " + err.Error()})
+		return
+	}
+	st, err := s.uploader.Flush(ctx, path)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success":     true,
+		"sessionKey":  st.sessionKey,
+		"finalOffset": st.lastOffset,
+		"partCount":   st.partCount,
+		"hash":        st.hashHex(),
+		"shipped":     st.shipped,
+	})
 }
 
 // handleEvents streams RPC session events to the client as server-sent events.

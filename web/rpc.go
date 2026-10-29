@@ -390,6 +390,26 @@ func (c *RpcClient) Send(ctx context.Context, command map[string]any) (*RpcComma
 	}
 }
 
+// State sends the get_state command and returns the response data payload
+// (the session file and friends). It is how the server learns which session
+// file it should be uploading.
+func (c *RpcClient) State(ctx context.Context) (map[string]any, error) {
+	res, err := c.Send(ctx, map[string]any{"type": "get_state"})
+	if err != nil {
+		return nil, err
+	}
+	if !res.Success {
+		return nil, fmt.Errorf("get_state failed: %s", res.Error)
+	}
+	var data map[string]any
+	if len(res.Data) > 0 {
+		if err := json.Unmarshal(res.Data, &data); err != nil {
+			return nil, fmt.Errorf("get_state: bad data: %w", err)
+		}
+	}
+	return data, nil
+}
+
 // DialogOpen reports whether a dialog is currently pending for `id`.
 func (c *RpcClient) DialogOpen(id string) bool {
 	c.subsMu.Lock()
