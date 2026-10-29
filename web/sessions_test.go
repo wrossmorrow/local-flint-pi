@@ -257,6 +257,33 @@ func TestSessionUploaderCloseWritesClosedMarker(t *testing.T) {
 	}
 }
 
+func TestSessionUploaderCloseSessionWritesClosedMarker(t *testing.T) {
+	content := []byte("{\"type\":\"message_end\"}\n")
+	path := writeSessionFile(t, testSessionID+".jsonl", string(content))
+	u := newSessionUploader(newFakeStore(), time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: path}, nil })
+	if _, err := u.Flush(context.Background(), &sessionRef{Path: path}); err != nil {
+		t.Fatal(err)
+	}
+	if err := u.CloseSession(context.Background(), testSessionID, "closed", &sessionRef{Path: path}); err != nil {
+		t.Fatal(err)
+	}
+	fake := u.store.(*fakeStore)
+	b, _, ok := fake.get(closedKey(testSessionID))
+	if !ok {
+		t.Fatal("_closed not written by CloseSession")
+	}
+	var cr closedReport
+	if err := json.Unmarshal(b, &cr); err != nil {
+		t.Fatal(err)
+	}
+	if cr.Status != "ok" {
+		t.Fatalf("_closed status = %q, want ok", cr.Status)
+	}
+	if cr.FinalOffset != int64(len(content)) {
+		t.Fatalf("_closed finalOffset = %d, want %d", cr.FinalOffset, len(content))
+	}
+}
+
 func TestSessionUploaderCloseMarksError(t *testing.T) {
 	path := writeSessionFile(t, testSessionID+".jsonl", "{\"type\":\"message_end\"}\n")
 	fake := newFakeStore()

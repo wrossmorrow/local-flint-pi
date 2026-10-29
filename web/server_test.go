@@ -164,3 +164,15 @@ func TestFlushEndpointRequiresSession(t *testing.T) {
 		t.Fatalf("status = %d, want %d (%s)", w.Code, http.StatusServiceUnavailable, w.Body.String())
 	}
 }
+
+func TestCloseEndpointRequiresSession(t *testing.T) {
+	s := NewServer(NewRpcClient("", nil, nil), nil, "", newSessionUploader(nil, time.Hour, defaultSessionMaxPartBytes, func(context.Context) (*sessionRef, error) { return &sessionRef{Path: ""}, nil }))
+	r := httptest.NewRequest("POST", "/api/close", strings.NewReader("{}"))
+	r.Host = "localhost"
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d (%s)", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+}

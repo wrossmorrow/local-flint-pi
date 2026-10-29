@@ -198,6 +198,7 @@ func (u *sessionUploader) Close(ctx context.Context, endReason string) error {
 		refStats = ref.Stats
 	}
 	for _, k := range keys {
+		log.Printf("session upload close: closing session %s (endReason %q)", k, endReason)
 		st := u.sessions[k]
 		final, err := u.flushLocked(ctx, st)
 		meta := st.metadata
@@ -251,9 +252,70 @@ func (u *sessionUploader) Close(ctx context.Context, endReason string) error {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("close session %s: %w", k, err)
 			}
+		} else {
+			log.Printf("session upload close: wrote %s status %q", closedKey(k), rep.Status)
 		}
 	}
 	return firstErr
+}
+
+// CloseSession performs an explicit close of one tracked session: it ships
+// any content pending for the session and writes its sessions/<id>/_closed
+// marker (status ok, or error with the failure message if the final flush
+// failed). It does not stop the periodic flush loop. It is the close trigger
+// behind the close endpoint and is a no-op for sessions that are not tracked.
+func (u *sessionUploader) CloseSession(ctx context.Context, sessionKey string, endReason string, ref *sessionRef) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	st, ok := u.sessions[sessionKey]
+	if !ok {
+		return nil
+	}
+	log.Printf("session upload close: closing session %s (endReason %q)", sessionKey, endReason)
+	final, err := u.flushLocked(ctx, st)
+	meta := st.metadata
+	if meta == nil {
+		meta = &sessionMetadata{SessionID: sessionKey}
+		st.metadata = meta
+	}
+	name := meta.SessionName
+	if ref != nil && sessionKey == sessionIDFromFile(ref.Path) {
+		name = sessionNameFromState(ref.State)
+	}
+	meta.SessionName = name
+	meta.EndedAt = time.Now().UTC().Format(time.RFC3339)
+	meta.EndReason = endReason
+	if ref != nil {
+		meta.Tokens = tokensFromStats(ref.Stats)
+		meta.ToolCalls = toolCallsFromStats(ref.Stats)
+		meta.MessageCounts = messageCountsFromStats(ref.Stats)
+	}
+	b, mErr := json.Marshal(meta)
+	if mErr != nil {
+		return mErr
+	}
+	if err := u.store.Put(ctx, metadataKey(sessionKey), b, "application/json"); err != nil {
+		return fmt.Errorf("close session %s: %w", sessionKey, err)
+	}
+	rep := closedReport{
+		Status:      "ok",
+		FinalOffset: final.lastOffset,
+		PartCount:   final.partCount,
+		Hash:        final.hashHex(),
+	}
+	if err != nil {
+		rep.Status = "error"
+		rep.Error = err.Error()
+	}
+	cb, cErr := json.Marshal(rep)
+	if cErr != nil {
+		return cErr
+	}
+	if err := u.store.Put(ctx, closedKey(sessionKey), cb, closedContentType); err != nil {
+		return fmt.Errorf("close session %s: %w", sessionKey, err)
+	}
+	log.Printf("session upload close: wrote %s status %q", closedKey(sessionKey), rep.Status)
+	return nil
 }
 
 // Flush ships everything in the session at ref since the tracked offset and

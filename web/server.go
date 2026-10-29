@@ -158,6 +158,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/cmd", s.handleCommand)
 	mux.HandleFunc("POST /api/extension-ui/response", s.handleExtensionUIResponse)
 	mux.HandleFunc("POST /api/flush", s.handleFlush)
+	mux.HandleFunc("POST /api/close", s.handleClose)
 	return s.guard(mux)
 }
 
@@ -309,6 +310,30 @@ func (s *Server) handleFlush(w http.ResponseWriter, r *http.Request) {
 		"hash":        st.hashHex(),
 		"shipped":     st.shipped,
 	})
+}
+
+// handleClose performs an explicit close of the current session: it ships
+// pending content and writes the sessions/<id>/_closed marker, the same final
+// flush + close marker the shutdown path performs. It is the close trigger for
+// the between-session lifecycle (flush does not write the close marker).
+func (s *Server) handleClose(w http.ResponseWriter, r *http.Request) {
+	if !s.uploader.Enabled() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"success": false, "error": "s3 not configured"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), defaultCommandTimeout)
+	defer cancel()
+	ref, err := s.SessionRef(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"success": false, "error": "session unavailable: " + err.Error()})
+		return
+	}
+	key := sessionIDFromFile(ref.Path)
+	if err := s.uploader.CloseSession(ctx, key, "closed", ref); err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "sessionKey": key})
 }
 
 // handleEvents streams RPC session events to the client as server-sent events.
