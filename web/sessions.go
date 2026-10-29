@@ -68,6 +68,7 @@ type sessionState struct {
 	partCount  int64
 	hash       hash.Hash // running sha256 over the shipped JSONL bytes
 	shipped    bool      // whether the latest flush shipped anything
+	closed     bool      // whether the session has been closed via the close trigger / sweep
 	metadata   *sessionMetadata
 }
 
@@ -138,6 +139,15 @@ func newSessionUploader(store sessionStore, flushInterval time.Duration, maxPart
 
 func (u *sessionUploader) Enabled() bool { return u.store != nil }
 
+// IsClosed reports whether the session has been closed via the close trigger
+// or the shutdown sweep and therefore accepts no further user messages.
+func (u *sessionUploader) IsClosed(sessionKey string) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	st, ok := u.sessions[sessionKey]
+	return ok && st.closed
+}
+
 // Start begins the periodic flush loop and returns a stop function that waits
 // for the loop to wind down.
 func (u *sessionUploader) Start(ctx context.Context) func() {
@@ -200,6 +210,7 @@ func (u *sessionUploader) Close(ctx context.Context, endReason string) error {
 	for _, k := range keys {
 		log.Printf("session upload close: closing session %s (endReason %q)", k, endReason)
 		st := u.sessions[k]
+		st.closed = true
 		final, err := u.flushLocked(ctx, st)
 		meta := st.metadata
 		if meta == nil {
@@ -314,6 +325,7 @@ func (u *sessionUploader) CloseSession(ctx context.Context, sessionKey string, e
 	if err := u.store.Put(ctx, closedKey(sessionKey), cb, closedContentType); err != nil {
 		return fmt.Errorf("close session %s: %w", sessionKey, err)
 	}
+	st.closed = true
 	log.Printf("session upload close: wrote %s status %q", closedKey(sessionKey), rep.Status)
 	return nil
 }

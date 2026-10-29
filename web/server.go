@@ -267,7 +267,29 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 	s.run(w, r, cmd)
 }
 
+// isUserTurnCommand reports whether the command sends a user message to the
+// agent (prompt, steer, or follow-up).
+func isUserTurnCommand(t string) bool {
+	switch t {
+	case "prompt", "steer", "follow_up":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Server) run(w http.ResponseWriter, r *http.Request, cmd map[string]any) {
+	// A session that has been closed via the close trigger or the shutdown
+	// sweep accepts no further user messages.
+	if t, ok := cmd["type"].(string); ok && isUserTurnCommand(t) && s.uploader != nil && s.uploader.Enabled() {
+		ctx, cancel := context.WithTimeout(r.Context(), defaultCommandTimeout)
+		defer cancel()
+		ref, err := s.SessionRef(ctx)
+		if err == nil && ref != nil && s.uploader.IsClosed(sessionIDFromFile(ref.Path)) {
+			writeJSON(w, http.StatusConflict, map[string]any{"success": false, "error": "session closed"})
+			return
+		}
+	}
 	timeout := defaultCommandTimeout
 	if t, _ := cmd["type"].(string); longCommands[t] {
 		timeout = 30 * time.Minute

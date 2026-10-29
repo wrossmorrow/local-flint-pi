@@ -36,6 +36,21 @@ async function cmd(type, params = {}) {
   }
 }
 
+async function closeSessionNow() {
+  try {
+    const r = await fetch("/api/close", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.success) throw new Error(j.error || r.statusText);
+    S.closed = true;
+    input.value = ""; autoGrow(); paintEditorChrome();
+    notice("info", `closed session ${j.sessionKey ?? ""}`.trim());
+    return true;
+  } catch (e) {
+    notice("error", "close failed: " + (e?.message || e));
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------- state
 
 const S = {
@@ -52,6 +67,7 @@ const S = {
   ext: { status: new Map(), widgets: new Map(), title: "" },
   dialogs: [],
   history: [],          // sent prompts, for ↑/↓
+  closed: false,        // session closed via /close (no further messages accepted)
   histIdx: -1,
   images: [],
   bell: store.get("bell", false),
@@ -868,7 +884,8 @@ function autoGrow() {
 }
 
 const BUILTINS = [
-  { name: "new", description: "start a new session", run: async () => { const r = await cmd("new_session"); if (r.success && !r.data?.cancelled) resync(); } },
+  { name: "new", description: "start a new session", run: async () => { const r = await cmd("new_session"); if (r.success && !r.data?.cancelled) { S.closed = false; resync(); } } },
+  { name: "close", description: "close the session (flush + close marker)", run: async () => { await closeSessionNow(); } },
   { name: "compact", description: "compact context [custom instructions]", run: (arg) => cmd("compact", arg ? { customInstructions: arg } : {}) },
   { name: "model", description: "choose a model", run: () => openModelMenu($("#f-model")) },
   { name: "thinking", description: "set thinking level <" + "level>", run: async (arg) => { if (arg) { await cmd("set_thinking_level", { level: arg }); refreshStats(); } else openThinkingMenu($("#f-thinking")); } },
@@ -941,6 +958,8 @@ async function submit(mode) {
     finishTool(t, (d.output ?? r.error ?? "") + (d.truncated ? `\n… (truncated; full output in ${d.fullOutputPath})` : ""), !r.success || d.exitCode !== 0 || d.cancelled);
     return;
   }
+  // A closed session accepts no further messages from the user.
+  if (S.closed) { input.value = ""; autoGrow(); paintEditorChrome(); return; }
   const params = { message: text };
   if (S.images.length) params.images = S.images.map(({ data, mimeType }) => ({ type: "image", data, mimeType }));
   let type = "prompt";
@@ -1104,6 +1123,7 @@ function showHelp() {
     "ctrl+t           show/hide thinking",
     "ctrl+o           expand/collapse all tool output",
     "↑ / ↓            previous prompts (at start of input)",
+    "/close           close the session (flush + close marker)",
     "/                commands (built-in, extension, skills, prompts)",
     "!cmd             run a shell command in the sandbox; output goes into the next prompt",
     "click a tool row to expand it; hover an answer to copy it",
