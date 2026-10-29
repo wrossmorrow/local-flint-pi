@@ -182,9 +182,17 @@ WORKDIR /work
 
 ENTRYPOINT ["/opt/entrypoint.sh"]
 
+# Build the pi web interface binary (Go, stdlib only) that spawns `pi --mode rpc`
+# and serves the browser UI.
+FROM golang:1.23-alpine AS web
+WORKDIR /src
+COPY web/ ./
+RUN go build -o /web .
+
 # Final stage: the full agent image (default build target for bare docker build)
 FROM agent AS final
 USER node
 WORKDIR /work
+COPY --from=web /web /usr/local/bin/pi-web
 
 ENTRYPOINT ["/opt/entrypoint.sh"]

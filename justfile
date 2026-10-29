@@ -58,7 +58,7 @@ up repo toolchain="agent" *flags="": serve
     REC_API_KEY=$( rec auth token ) \
     AGENT_IMAGE=${AGENT_IMAGE:-{{ image_base }}-{{ toolchain }}} \
     AGENT_TARGET=${AGENT_TARGET:-{{ toolchain }}} \
-        docker compose run --rm agent {{ flags }}
+        docker compose run --rm agent --service-ports {{ flags }}
 
 # bring down compose setup (not flint, see just stop)
 down repo *flags="":

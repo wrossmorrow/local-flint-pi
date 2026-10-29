@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #0d1117; color: #e6edf3; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid #21262d; font-size: 13px; }
+  header .title { font-weight: 600; }
+  header .spacer { flex: 1; }
+  main { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 85%; padding: 8px 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.45; }
+  .msg.user { align-self: flex-end; background: #1f6feb; color: #fff; border-bottom-right-radius: 2px; }
+  .msg.assistant { align-self: flex-start; background: #161b22; border: 1px solid #21262d; border-bottom-left-radius: 2px; }
+  .msg.assistant .who, .msg.system .who { font-size: 11px; opacity: 0.7; margin-bottom: 4px; }
+  .msg.tool { align-self: stretch; color: #79c0ff; background: #0d1117; border-left: 2px solid #1f6feb; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+  .msg.tool.error { color: #ff7b72; border-left-color: #f85149; }
+  .msg.thinking { align-self: stretch; color: #8b949e; font-size: 12px; font-style: italic; white-space: pre-wrap; }
+  .working { align-self: flex-start; color: #8b949e; font-size: 12px; }
+  footer { border-top: 1px solid #21262d; padding: 12px 16px; display: flex; gap: 8px; align-items: flex-end; }
+  textarea { flex: 1; background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; font: inherit; resize: vertical; min-height: 40px; }
+  button { background: #238636; color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #log { display: flex; flex-direction: column; gap: 8px; }
+  .empty { color: #8b949e; text-align: center; margin-top: 40vh; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="title">pi</span>
+  <span id="status">connecting…</span>
+  <span class="spacer"></span>
+  <button id="abort" disabled>Abort</button>
+  <button id="clearQueue" disabled>Clear queue</button>
+</header>
+<main>
+  <div id="log"></div>
+</main>
+<footer>
+  <textarea id="prompt" placeholder="Send a prompt to the agent…"></textarea>
+  <button id="send" disabled>Send</button>
+</footer>
+<script>
+const state = { streaming: false, model: null, contextUsage: null };
+const entries = [];
+
+function textOf(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  let out = "";
+  for (const c of content) {
+    if (c && c.type === "text") out += c.text;
+  }
+  return out;
+}
+
+function render() {
+  const log = document.getElementById("log");
+  log.innerHTML = "";
+  if (entries.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No conversation yet. Send a prompt to the agent.";
+    log.appendChild(empty);
+  }
+  for (const e of entries) {
+    const el = document.createElement("div");
+    el.className = "msg " + e.type;
+    if (e.type === "user") {
+      el.className = "msg user";
+      el.textContent = e.text;
+    } else if (e.type === "assistant") {
+      el.className = "msg assistant";
+      if (e.thinking) {
+        const th = document.createElement("div");
+        th.className = "msg thinking";
+        th.textContent = e.thinking;
+        el.appendChild(th);
+      }
+      if (e.text) {
+        const txt = document.createElement("div");
+        txt.textContent = e.text;
+        el.appendChild(txt);
+      }
+      for (const tc of Object.values(e.toolCalls || {})) {
+        const call = document.createElement("div");
+        call.className = "msg tool" + (tc.isError ? " error" : "");
+        call.textContent = "[tool] " + tc.name + " " + JSON.stringify(tc.args || {});
+        if (tc.resultText) call.textContent += "\n" + tc.resultText;
+        el.appendChild(call);
+      }
+    } else if (e.type === "tool") {
+      const call = document.createElement("div");
+      call.className = "msg tool" + (e.isError ? " error" : "");
+      call.textContent = "[tool] " + e.toolName + " " + JSON.stringify(e.args || {}) + "\n" + e.resultText;
+      el.appendChild(call);
+    } else if (e.type === "bash") {
+      const call = document.createElement("div");
+      call.className = "msg tool";
+      call.textContent = "$ " + e.command + "\n" + e.output;
+      if (e.isError) call.className = "msg tool error";
+      el.appendChild(call);
+    } else if (e.type === "system") {
+      const sys = document.createElement("div");
+      sys.className = "msg system";
+      sys.textContent = e.text;
+      el.appendChild(sys);
+    }
+    log.appendChild(el);
+  }
+  if (state.streaming) {
+    const w = document.createElement("div");
+    w.className = "working";
+    w.id = "working";
+    w.textContent = "Agent: Working";
+    log.appendChild(w);
+  }
+  scrollBottom();
+}
+
+function scrollBottom() {
+  const log = document.getElementById("log");
+  log.scrollTop = log.scrollHeight;
+}
+
+function setStreaming(v) {
+  state.streaming = !!v;
+  document.getElementById("send").disabled = !!v;
+  document.getElementById("abort").disabled = !v;
+  render();
+}
+
+function setStatus(text) {
+  document.getElementById("status").textContent = text;
+}
+
+function showDialog(d) {
+  const footer = document.getElementById("prompt");
+  footer.style.display = "none";
+  const wrap = document.createElement("div");
+  wrap.id = "dialog";
+  const title = document.createElement("div");
+  title.style.fontWeight = "600";
+  title.textContent = d.title || "Agent needs input";
+  const body = document.createElement("div");
+  body.textContent = d.message || "";
+  wrap.appendChild(title);
+  wrap.appendChild(body);
+  if (d.options) {
+    const opts = document.createElement("div");
+    opts.style.display = "flex";
+    opts.style.flexDirection = "column";
+    opts.style.gap = "6px";
+    for (const o of d.options) {
+      const b = document.createElement("button");
+      b.textContent = o;
+      b.onclick = () => answerDialog(d.id, d.method === "confirm" ? { confirmed: o === "Yes" } : { value: o });
+      opts.appendChild(b);
+    }
+    wrap.appendChild(opts);
+  }
+  const cancel = document.createElement("button");
+  cancel.textContent = "Cancel";
+  cancel.onclick = () => answerDialog(d.id, { cancelled: true });
+  wrap.appendChild(cancel);
+  document.getElementById("log").appendChild(wrap);
+  scrollBottom();
+}
+
+function answerDialog(id, response) {
+  fetch("/api/extension-ui/response", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, ...response }),
+  }).then(() => clearDialog()).catch(() => {});
+}
+
+function clearDialog() {
+  const d = document.getElementById("dialog");
+  if (d) d.remove();
+  document.getElementById("prompt").style.display = "";
+}
+
+function addEntry(e) { entries.push(e); render(); }
+
+function handleEvent(ev) {
+  const t = ev.type;
+  if (t === "agent_start") { setStreaming(true); render(); }
+  else if (t === "agent_end") { /* run closed; may be followed by recovery */ }
+  else if (t === "agent_settled") { setStreaming(false); render(); }
+  else if (t === "message_start") {
+    const m = ev.message || {};
+    if (m.role === "user") {
+      addEntry({ type: "user", text: textOf(m.content) });
+    } else if (m.role === "assistant") {
+      addEntry({ type: "assistant", text: "", thinking: "", toolCalls: {}, complete: false });
+    } else if (m.role === "bashExecution") {
+      addEntry({ type: "bash", command: m.command, output: m.output || "", isError: false });
+    }
+  } else if (t === "message_update") {
+    const evt = ev.assistantMessageEvent || {};
+    const entry = entries[entries.length - 1];
+    if (evt.type === "text_delta" && entry && entry.type === "assistant") {
+      entry.text += evt.delta;
+      render();
+    } else if (evt.type === "thinking_delta" && entry && entry.type === "assistant") {
+      entry.thinking += evt.delta;
+      render();
+    } else if (evt.type === "toolcall_start" && entry && entry.type === "assistant") {
+      entry.toolCalls[evt.id] = { name: evt.toolName, args: {}, status: "running" };
+      render();
+    } else if (evt.type === "toolcall_end" && entry && entry.type === "assistant" && entry.toolCalls[evt.id]) {
+      entry.toolCalls[evt.id].args = evt.toolCall ? evt.toolCall.arguments : entry.toolCalls[evt.id].args;
+      entry.toolCalls[evt.id].status = "done";
+      render();
+    }
+  } else if (t === "tool_execution_start") {
+    const entry = entries[entries.length - 1];
+    if (entry && entry.type === "assistant") {
+      // associate by matching an existing call id if present
+      const existing = entry.toolCalls[ev.toolCallId];
+      if (existing) {
+        existing.status = "running";
+        existing.name = ev.toolName;
+        existing.args = ev.args || existing.args;
+      } else {
+        entry.toolCalls[ev.toolCallId] = { name: ev.toolName, args: ev.args || {}, status: "running" };
+      }
+      render();
+    }
+  } else if (t === "tool_execution_end") {
+    const entry = entries[entries.length - 1];
+    const resultText = contentText(ev.result);
+    const isError = !!ev.isError;
+    if (entry && entry.type === "assistant") {
+      const call = entry.toolCalls[ev.toolCallId];
+      if (call) {
+        call.status = isError ? "error" : "done";
+        call.isError = isError;
+        call.resultText = resultText;
+      }
+    } else {
+      addEntry({ type: "tool", toolCallId: ev.toolCallId, toolName: ev.toolName, args: {}, resultText, isError });
+    }
+    render();
+  } else if (t === "bash_execution_update") {
+    // direct bash command output
+  } else if (t === "queue_update") {
+    // steering/followUp counts surfaced via status
+  } else if (t === "extension_ui_request") {
+    const d = ev;
+    if (["select", "confirm", "input", "editor"].includes(d.method)) {
+      showDialog(d);
+    } else if (d.method === "notify") {
+      addEntry({ type: "system", text: "Notification: " + (d.message || "") });
+    } else if (d.method === "setStatus") {
+      setStatus(d.statusText || "idle");
+    } else if (d.method === "set_editor_text") {
+      document.getElementById("prompt").value = d.text || "";
+      render();
+    }
+  } else if (t === "session_info_changed") {
+    setStatus(ev.name || "idle");
+  }
+}
+
+function contentText(result) {
+  if (!result) return "";
+  if (typeof result === "string") return result;
+  if (Array.isArray(result)) {
+    let out = "";
+    for (const c of result) {
+      if (c && c.type === "text") out += c.text;
+    }
+    return out;
+  }
+  if (result.content) return contentText(result.content);
+  if (result.text) return result.text;
+  return "";
+}
+
+function sendPrompt() {
+  const textarea = document.getElementById("prompt");
+  const message = textarea.value.trim();
+  if (!message) return;
+  fetch("/api/prompt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  }).then(r => r.json()).then(d => {
+    if (d.error) alert("Error: " + d.error);
+  });
+  textarea.value = "";
+}
+
+function sendAbort() {
+  fetch("/api/abort", { method: "POST" }).then(r => r.json()).then(d => { if (d.error) alert("Error: " + d.error); });
+}
+
+function clearQueue() {
+  fetch("/api/clear_queue", { method: "POST" }).then(r => r.json()).then(d => { if (d.error) alert("Error: " + d.error); });
+}
+
+const prompt = document.getElementById("prompt");
+const send = document.getElementById("send");
+const abort = document.getElementById("abort");
+const clearQueueBtn = document.getElementById("clearQueue");
+
+prompt.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    if (!send.disabled) sendPrompt();
+  }
+});
+send.addEventListener("click", sendPrompt);
+abort.addEventListener("click", sendAbort);
+clearQueueBtn.addEventListener("click", clearQueue);
+
+const es = new EventSource("/api/events");
+es.onmessage = (ev) => {
+  try { handleEvent(JSON.parse(ev.data)); } catch (e) { console.error(e); }
+};
+es.onerror = () => { setStatus("disconnected"); };
+
+setInterval(() => {
+  fetch("/api/state").then(r => r.json()).then(d => {
+    state.streaming = !!d.isStreaming;
+    state.model = d.model;
+    setStreaming(state.streaming);
+    setStatus((state.streaming ? "Agent: Working" : "Agent: Idle") + (d.sessionName ? " · " + d.sessionName : ""));
+  }).catch(() => {});
+}, 2000);
+
+render();
+scrollBottom();
+</script>
+</body>
+</html>

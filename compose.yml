@@ -108,6 +108,8 @@ services:
       - sandbox
     stdin_open: true
     tty: true
+    ports:
+      - "127.0.0.1:${PI_WEB_PORT:-8787}:8787"
 
 secrets:
   gh_private_key:

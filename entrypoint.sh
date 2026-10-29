@@ -20,5 +20,8 @@ mkdir -p "${AGENT_DIR}"
 cat /opt/agents/*.md > "${AGENT_DIR}/AGENTS.md"
 
 cd /work/repo
-SESSION_NAME=${SESSION_NAME:-${GITHUB_REPO_NAME}}
-exec pi --extension /opt/rec/flint-pi.ts --provider rec --model flint --name "${SESSION_NAME}"
+export SESSION_NAME=${SESSION_NAME:-${GITHUB_REPO_NAME}}
+
+# run the pi web interface: spawns `pi --mode rpc` and serves the browser UI on
+# localhost, which is how the agent is interacted with in this sandbox
+exec /usr/local/bin/pi-web
