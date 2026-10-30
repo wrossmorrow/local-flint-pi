@@ -67,7 +67,7 @@ func loadConfig() (*config, error) {
 		accessKey:     envOr("AWS_ACCESS_KEY_ID", envOr("WEB_AWS_ACCESS_KEY_ID", "")),
 		secretKey:     envOr("AWS_SECRET_ACCESS_KEY", envOr("WEB_AWS_SECRET_ACCESS_KEY", "")),
 		region:        envOr("AWS_REGION", envOr("WEB_AWS_REGION", "us-east-1")),
-		flushInterval: time.Duration(envIntOr("PI_WEB_S3_FLUSH_INTERVAL_SECONDS", 30)) * time.Second,
+		flushInterval: time.Duration(envIntOr("PI_WEB_S3_FLUSH_INTERVAL_SECONDS", 120)) * time.Second,
 		maxPartBytes:  envInt64Or("PI_WEB_S3_MAX_PART_BYTES", defaultSessionMaxPartBytes),
 	}, nil
 }
