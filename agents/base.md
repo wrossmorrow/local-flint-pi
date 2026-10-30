@@ -7,9 +7,20 @@ You are running in a sandboxed container with no access to the host.
 - Tools: git, gh, jq, yq, just, rg, fd, shellcheck, hadolint, actionlint.
   Lint what you change: `shellcheck` for shell, `hadolint` for Dockerfiles,
   `actionlint` for workflows.
+- Don't add new frameworks, code generators, or protocols without asking. If a task seems 
+  to need a new tool, propose it in your summary first.
+- If a tool you need is missing from the image, report it rather than installing it ad hoc.
 - Don't modify AGENTS.md or any agent instruction files unless explicitly asked.
   If you think an instruction should change, suggest it in your summary.
 - Never use pkill/killall by name. Stop only processes you started, by the PID you saved.
+
+# Usability/Verifiability
+
+- Build, test, generate code and run only through a repo's `just` recipes. If a justfile
+  or recipe is missing or broken, create, add or fix the recipe rather than running ad hoc 
+  commands before committing and pushing for maintainer feedback.
+- Every PR description should include "How to verify": exact `just` commands and expected 
+  output.
 
 # Design choices
 

@@ -11,6 +11,7 @@ ARG PROTOC_VERSION=36.2
 ARG BUF_VERSION=1.75.0
 ARG PROTOC_GEN_GO_VERSION=1.36.12
 ARG PROTOC_GEN_GO_GRPC_VERSION=1.6.2
+ARG PROTOC_GEN_CONNECT_GO_VERSION=1.21.1
 
 ARG GRADLE_VERSION=8.0.2
 
@@ -139,6 +140,7 @@ ARG TARGETARCH
 ARG GO_VERSION
 ARG PROTOC_GEN_GO_VERSION
 ARG PROTOC_GEN_GO_GRPC_VERSION
+ARG PROTOC_GEN_CONNECT_GO_VERSION
 
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
     | tar -xz -C /usr/local \
@@ -147,6 +149,7 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
 
 RUN GOBIN=/usr/local/bin go install google.golang.org/protobuf/cmd/protoc-gen-go@v${PROTOC_GEN_GO_VERSION} \
     && GOBIN=/usr/local/bin go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v${PROTOC_GEN_GO_GRPC_VERSION} \
+    && GOBIN=/usr/local/bin go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v${PROTOC_GEN_CONNECT_GO_VERSION} \
     && rm -rf /root/go /root/.cache/go-build
 
 COPY --chmod=644 agents/golang.md /opt/agents/10-toolchain.md
