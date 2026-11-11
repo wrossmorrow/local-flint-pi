@@ -14,13 +14,20 @@ You are running in a sandboxed container with no access to the host.
   If you think an instruction should change, suggest it in your summary.
 - Never use pkill/killall by name. Stop only processes you started, by the PID you saved.
 
-# Usability/Verifiability
+# Usability/Verifiability/Correctness
 
 - Build, test, generate code and run only through a repo's `just` recipes. If a justfile
   or recipe is missing or broken, create, add or fix the recipe rather than running ad hoc 
   commands before committing and pushing for maintainer feedback.
 - Every PR description should include "How to verify": exact `just` commands and expected 
   output.
+- Never make network calls (HTTP, S3, queues) inside a database transaction. Commit
+  state first (e.g. using sttus fields), make the call after, and record the outcome in a
+  separate update; suggest implementations for the call failing, the process dying in 
+  between statements, or generic networking issues.
+- If code you write involves sequential database transactions, focus on what needs to be 
+  implemented for safe durable record states under sequential errors; ask about status
+  fields, outbox pattern validity, or single-level automatic rollback logic.
 
 # Design choices
 
@@ -43,6 +50,8 @@ You are running in a sandboxed container with no access to the host.
 - If a push or command is rejected, stop and report it. Don't try workarounds.
 - Never modify `.github/workflows/` or other CI configuration. If a CI check fails
   because of its own rules (not your code), stop and report what the check requires.
+- To read PR feedback, run `just pr-feedback <n>` every time you're asked; never rely
+  on an earlier result. It includes inline review comments that `gh pr view` omits.
 
 # Protobuf
 

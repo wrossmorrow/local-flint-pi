@@ -49,7 +49,7 @@ ARG PROTOC_VERSION
 
 # add whatever toolchains your repos need: go, rust, python, java, etc.
 RUN apt-get update \
-    && apt-get install -y git ripgrep curl wget fd-find unzip \
+    && apt-get install -y git ripgrep curl wget fd-find unzip jq \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/* \
     && case "${TARGETARCH}" in \

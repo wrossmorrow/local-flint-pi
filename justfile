@@ -81,3 +81,19 @@ flush-usage-table host="127.0.0.1" port="9091":
 # run the web UI against a scripted fake pi (no model or container needed)
 web-dev port="8787":
     cd web && PI_BIN=node PI_ARGS=testdata/fake-pi.mjs PI_LOGO_PATH=../rec-ext/logo-pixels.json PI_WEB_PORT={{ port }} go run .
+
+
+# commit and push whatever the running agent has, without involving the model
+rescue:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    c=$(docker ps -q --filter label=com.docker.compose.service=agent | head -1)
+    [ -n "$c" ] || { echo "no running agent container"; exit 1; }
+    docker cp "$c":/work/repo "./rescue/$(date +%Y%m%d-%H%M%S)"
+    docker exec "$c" bash -c 'cd /work/repo && git add -A && git commit -m "chore: wip rescue at $(date +%Y%m%d-%H%M%S)" && git push -u origin HEAD'
+
+# everything reviewers said on a PR: conversation, reviews, and inline line comments
+pr-feedback pr:
+    gh pr view {{pr}} --comments
+    gh api "repos/{owner}/{repo}/pulls/{{pr}}/reviews" --jq '.[] | "[\(.state)] \(.user.login): \(.body)"'
+    gh api "repos/{owner}/{repo}/pulls/{{pr}}/comments" --jq '.[] | "\(.path):\(.line // .original_line) \(.user.login): \(.body)"'
