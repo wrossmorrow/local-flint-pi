@@ -13,6 +13,14 @@ You are running in a sandboxed container with no access to the host.
 - Don't modify AGENTS.md or any agent instruction files unless explicitly asked.
   If you think an instruction should change, suggest it in your summary.
 - Never use pkill/killall by name. Stop only processes you started, by the PID you saved.
+- Change existing files with the edit tool (targeted replacements), not by rewriting
+  the whole file with `cat >`/heredocs. Only create new files with full writes.
+- If the same action fails or repeats twice, stop and report what you were trying to do.
+- For any task bigger than one file, first reply with a short numbered plan (files in
+  order, each with its check). Then do one step at a time, committing after each. 
+  If such a plan conflicts with other rules (e.g., not making design decisions yourself)
+  you can ask the maintainer for approval on the plan. Otherwise, you can report and 
+  proceed one by one yourself.
 
 # Usability/Verifiability/Correctness
 
