@@ -89,7 +89,7 @@ rescue:
     set -euo pipefail
     c=$(docker ps -q --filter label=com.docker.compose.service=agent | head -1)
     [ -n "$c" ] || { echo "no running agent container"; exit 1; }
-    docker cp "$c":/work/repo "./rescue/$(date +%Y%m%d-%H%M%S)"
+    docker cp "$c":/work/repo "./rescues/$(date +%Y%m%d-%H%M%S)"
     docker exec "$c" bash -c 'cd /work/repo && git add -A && git commit -m "chore: wip rescue at $(date +%Y%m%d-%H%M%S)" && git push -u origin HEAD'
 
 # everything reviewers said on a PR: conversation, reviews, and inline line comments
