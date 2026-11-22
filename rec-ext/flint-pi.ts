@@ -106,13 +106,18 @@ export default function (pi: ExtensionAPI) {
   }
 
   const inklingProvider = process.env.INKLING_PROVIDER || 'llama-server';
+  const inklingApiKey = process.env.INKLING_API_KEY || 'local';
   const inklingConfig = JSON.parse(
     process.env.INKLING_PI_CONFIG || '{"baseUrl":"http://model-relay:11500/v1","contextWindow":131072,"maxTokens":32768}'
   );
   pi.registerProvider(inklingProvider, {
     name: 'Inkling local', api: 'openai-completions',
     baseUrl: inklingConfig.baseUrl, apiKey: 'INKLING_API_KEY',
-    headers: { 'x-provider': inklingProvider, 'x-model': 'thinkingmachines/Inkling-2-Mini' },
+    headers: {
+      Authorization: `Bearer ${inklingApiKey}`,
+      'x-provider': inklingProvider,
+      'x-model': 'thinkingmachines/Inkling-2-Mini',
+    },
     models: [{
       id: 'thinkingmachines/Inkling-2-Mini', name: 'Inkling 2 Mini', reasoning: true, input: ['text', 'image'],
       contextWindow: inklingConfig.contextWindow, maxTokens: inklingConfig.maxTokens,
