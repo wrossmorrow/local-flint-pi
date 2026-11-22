@@ -10,6 +10,11 @@ import (
 	_ "github.com/duckdb/duckdb-go/v2"
 )
 
+const (
+	defaultModel    = "RecursiveSI/flint"
+	defaultProvider = "rec"
+)
+
 // UsageRecord is a timestamped token-usage observation as stored in the
 // tabular usage database.
 type UsageRecord struct {
@@ -18,6 +23,8 @@ type UsageRecord struct {
 	Status      string          `json:"status,omitempty"`
 	SessionID   string          `json:"session_id,omitempty"`
 	SessionName string          `json:"session_name,omitempty"`
+	Model       string          `json:"model,omitempty"`
+	Provider    string          `json:"provider,omitempty"`
 	Tokens      TokenUsage      `json:"tokens"`
 	Timing      ResponseTiming  `json:"timing"`
 	Latency     ResponseLatency `json:"latency"`
@@ -54,6 +61,8 @@ var tokenUsageColumns = []tokenUsageColumn{
 	{Name: "cached_tokens", Type: "BIGINT", Default: "0"},
 	{Name: "session_id", Type: "VARCHAR", Default: "''"},
 	{Name: "session_name", Type: "VARCHAR", Default: "''"},
+	{Name: "model", Type: "VARCHAR", Default: "'RecursiveSI/flint'"},
+	{Name: "provider", Type: "VARCHAR", Default: "'rec'"},
 	{Name: "request_received_at", Type: "TIMESTAMP"},
 	{Name: "first_response_at", Type: "TIMESTAMP"},
 	{Name: "last_response_at", Type: "TIMESTAMP"},
@@ -112,6 +121,8 @@ type tokenUsageRow struct {
 	CachedTokens           int64
 	SessionID              string
 	SessionName            string
+	Model                  string
+	Provider               string
 	RequestReceivedAt      time.Time
 	FirstResponseAt        time.Time
 	LastResponseAt         time.Time
@@ -148,6 +159,8 @@ func NewUsageStore(dbPath string) (*UsageStore, error) {
 		cached_tokens BIGINT,
 		session_id VARCHAR,
 		session_name VARCHAR,
+		model VARCHAR DEFAULT 'RecursiveSI/flint',
+		provider VARCHAR DEFAULT 'rec',
 		request_received_at TIMESTAMP,
 		first_response_at TIMESTAMP,
 		last_response_at TIMESTAMP,
@@ -170,12 +183,20 @@ func (s *UsageStore) Record(u *Usage, responseID string, status string, timing R
 	if u == nil {
 		return errors.New("cannot record usage from nil usage")
 	}
+	model := u.Model
+	if model == "" {
+		model = defaultModel
+	}
+	provider := u.Provider
+	if provider == "" {
+		provider = defaultProvider
+	}
 	ctx := context.Background()
 	_, err := s.conn.ExecContext(ctx, `
 		INSERT INTO token_usage (
 			timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens, session_id, session_name,
-			request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			model, provider, request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		time.Now().UTC(),
 		responseID,
@@ -186,6 +207,8 @@ func (s *UsageStore) Record(u *Usage, responseID string, status string, timing R
 		u.PromptTokensDetails.CachedTokens,
 		u.SessionID,
 		u.SessionName,
+		model,
+		provider,
 		timing.RequestReceivedAt,
 		timing.FirstResponseAt,
 		timing.LastResponseAt,
@@ -203,7 +226,7 @@ func (s *UsageStore) Record(u *Usage, responseID string, status string, timing R
 func (s *UsageStore) Records() ([]UsageRecord, error) {
 	rows, err := s.conn.Query(`
 		SELECT timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens, session_id, session_name,
-			request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
+			model, provider, request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
 		FROM token_usage
 		ORDER BY timestamp
 	`)
@@ -225,6 +248,8 @@ func (s *UsageStore) Records() ([]UsageRecord, error) {
 			&r.CachedTokens,
 			&r.SessionID,
 			&r.SessionName,
+			&r.Model,
+			&r.Provider,
 			&r.RequestReceivedAt,
 			&r.FirstResponseAt,
 			&r.LastResponseAt,
@@ -240,6 +265,8 @@ func (s *UsageStore) Records() ([]UsageRecord, error) {
 			Status:      r.Status,
 			SessionID:   r.SessionID,
 			SessionName: r.SessionName,
+			Model:       r.Model,
+			Provider:    r.Provider,
 			Tokens: TokenUsage{
 				PromptTokens:     r.PromptTokens,
 				CompletionTokens: r.CompletionTokens,

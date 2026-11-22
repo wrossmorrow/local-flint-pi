@@ -167,6 +167,9 @@ func TestMotherDuckInsertMapsColumnsByNameAcrossSchemaDrift(t *testing.T) {
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf(tokenUsageCreateTablePreSessionColumns, mdDatabase)); err != nil {
 		t.Fatalf("CREATE TABLE IF NOT EXISTS failed: %v", err)
 	}
+	if err := migrateMotherDuckSchema(ctx, conn, mdDatabase); err != nil {
+		t.Fatalf("migrateMotherDuckSchema() error = %v", err)
+	}
 	// the source table has the post-session-attribution layout, the target
 	// table has the pre-session-attribution layout; the insert must still map
 	// columns by name and succeed
@@ -174,7 +177,7 @@ func TestMotherDuckInsertMapsColumnsByNameAcrossSchemaDrift(t *testing.T) {
 		t.Fatalf("motherDuckInsert() error = %v, want nil across drifted source and target schemas", err)
 	}
 
-	recs, err := store.Query(fmt.Sprintf("SELECT timestamp, session_id, session_name, request_received_at, first_response_at, last_response_at, error_at, prompt_tokens FROM \"%s\".token_usage;", mdDatabase))
+	recs, err := store.Query(fmt.Sprintf("SELECT timestamp, session_id, session_name, model, provider, request_received_at, first_response_at, last_response_at, error_at, prompt_tokens FROM \"%s\".token_usage;", mdDatabase))
 	if err != nil {
 		t.Fatalf("Query() error = %v", err)
 	}
@@ -187,6 +190,12 @@ func TestMotherDuckInsertMapsColumnsByNameAcrossSchemaDrift(t *testing.T) {
 	}
 	if got := row["session_name"].(string); got != "sess-drift" {
 		t.Errorf("session_name = %q, want %q", got, "sess-drift")
+	}
+	if got := row["model"].(string); got != defaultModel {
+		t.Errorf("model = %q, want %q", got, defaultModel)
+	}
+	if got := row["provider"].(string); got != defaultProvider {
+		t.Errorf("provider = %q, want %q", got, defaultProvider)
 	}
 	if got := row["request_received_at"].(time.Time); !got.Equal(timing.RequestReceivedAt) {
 		t.Errorf("request_received_at = %v, want %v", got, timing.RequestReceivedAt)
@@ -202,6 +211,83 @@ func TestMotherDuckInsertMapsColumnsByNameAcrossSchemaDrift(t *testing.T) {
 	}
 	if got := row["prompt_tokens"].(int64); got != 3 {
 		t.Errorf("prompt_tokens = %d, want 3", got)
+	}
+}
+
+func TestMotherDuckMigratesMissingModelAndProviderColumnsOnUpload(t *testing.T) {
+	t.Parallel()
+
+	mdDatabase := "testdb"
+	store, err := NewUsageStore(filepath.Join(t.TempDir(), "usage.duckdb"))
+	if err != nil {
+		t.Fatalf("NewUsageStore() error = %v", err)
+	}
+	defer store.Close()
+
+	timing := ResponseTiming{
+		RequestReceivedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		FirstResponseAt:   time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		LastResponseAt:    time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC),
+	}
+	latency := timing.Latency()
+	if err := store.Record(&Usage{
+		Model:        "thinkingmachines/Inkling-2-Mini",
+		Provider:     "llama-server",
+		PromptTokens: 20, CompletionTokens: 10, TotalTokens: 30,
+	}, "chatcmpl-inkling-1", "ok", timing, latency); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	ctx := context.Background()
+	conn, err := store.Conn(ctx)
+	if err != nil {
+		t.Fatalf("Conn() error = %v", err)
+	}
+	defer conn.Close()
+
+	targetPath := filepath.Join(t.TempDir(), "target.duckdb")
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("ATTACH '%s' AS \"%s\";", targetPath, mdDatabase)); err != nil {
+		t.Fatalf("ATTACH() error = %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(tokenUsageCreateTablePreSessionColumns, mdDatabase)); err != nil {
+		t.Fatalf("CREATE TABLE IF NOT EXISTS failed: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(`
+		INSERT INTO "%s".token_usage (
+			timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens,
+			request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms,
+			session_id, session_name
+		) VALUES (
+			TIMESTAMP '2026-01-01 00:00:00', 'chatcmpl-pre-model', 'ok', 3, 8, 11, 0,
+			TIMESTAMP '2026-01-01 00:00:00', TIMESTAMP '2026-01-01 00:00:01', TIMESTAMP '2026-01-01 00:00:03', TIMESTAMP '2026-01-01 00:00:02', 1000, 3000,
+			'sess-1', 'old-session'
+		);`, mdDatabase)); err != nil {
+		t.Fatalf("seed INSERT failed: %v", err)
+	}
+
+	if err := migrateMotherDuckSchema(ctx, conn, mdDatabase); err != nil {
+		t.Fatalf("migrateMotherDuckSchema() error = %v", err)
+	}
+	// idempotency: running migration twice should be safe
+	if err := migrateMotherDuckSchema(ctx, conn, mdDatabase); err != nil {
+		t.Fatalf("migrateMotherDuckSchema() second call error = %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckInsert, mdDatabase, mdDatabase)); err != nil {
+		t.Fatalf("motherDuckInsert() error = %v", err)
+	}
+
+	recs, err := store.Query(fmt.Sprintf("SELECT response_id, model, provider FROM \"%s\".token_usage ORDER BY response_id;", mdDatabase))
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	if len(recs) != 2 {
+		t.Fatalf("Query() len = %d, want 2", len(recs))
+	}
+	if recs[0]["response_id"] != "chatcmpl-inkling-1" || recs[0]["model"] != "thinkingmachines/Inkling-2-Mini" || recs[0]["provider"] != "llama-server" {
+		t.Errorf("recs[0] = %#v, want inkling-2-mini/llama-server", recs[0])
+	}
+	if recs[1]["response_id"] != "chatcmpl-pre-model" || recs[1]["model"] != defaultModel || recs[1]["provider"] != defaultProvider {
+		t.Errorf("recs[1] = %#v, want default model=%q provider=%q", recs[1], defaultModel, defaultProvider)
 	}
 }
 

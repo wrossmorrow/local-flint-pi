@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
@@ -38,6 +39,8 @@ const motherDuckCreateTable = `
 		cached_tokens BIGINT,
 		session_id VARCHAR,
 		session_name VARCHAR,
+		model VARCHAR DEFAULT 'RecursiveSI/flint',
+		provider VARCHAR DEFAULT 'rec',
 		request_received_at TIMESTAMP,
 		first_response_at TIMESTAMP,
 		last_response_at TIMESTAMP,
@@ -59,17 +62,32 @@ const motherDuckCreateTable = `
 const motherDuckInsert = `
 	INSERT INTO "%s".token_usage (
 		timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens, session_id, session_name,
-		request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
+		model, provider, request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
 	)
 	SELECT
 		timestamp, response_id, status, prompt_tokens, completion_tokens, total_tokens, cached_tokens, session_id, session_name,
-		request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
+		model, provider, request_received_at, first_response_at, last_response_at, error_at, first_response_latency_ms, total_response_latency_ms
 	FROM token_usage AS l
 	WHERE NOT EXISTS (
 		SELECT 1 FROM "%s".token_usage AS t
 		WHERE t.response_id = l.response_id
 	);
 `
+
+// migrateMotherDuckSchema ensures newly introduced columns exist on an
+// already-created target token_usage table so uploads remain backwards-compatible
+// across schema updates.
+func migrateMotherDuckSchema(ctx context.Context, conn *sql.Conn, dbName string) error {
+	for _, ddl := range []string{
+		fmt.Sprintf(`ALTER TABLE "%s".token_usage ADD COLUMN IF NOT EXISTS "model" VARCHAR DEFAULT 'RecursiveSI/flint';`, dbName),
+		fmt.Sprintf(`ALTER TABLE "%s".token_usage ADD COLUMN IF NOT EXISTS "provider" VARCHAR DEFAULT 'rec';`, dbName),
+	} {
+		if _, err := conn.ExecContext(ctx, ddl); err != nil {
+			return fmt.Errorf("failed to migrate motherduck token_usage schema: %w", err)
+		}
+	}
+	return nil
+}
 
 // MotherDuckDatabase returns the target MotherDuck database name for the usage
 // upload, or an empty string when the upload is disabled.
@@ -109,6 +127,9 @@ func (s *tokenCounterRequestProcessor) uploadToMotherDuck(ctx context.Context, d
 	}
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckCreateTable, s.mdDatabase)); err != nil {
 		return fmt.Errorf("failed to create motherduck token usage table: %w", err)
+	}
+	if err := migrateMotherDuckSchema(ctx, conn, s.mdDatabase); err != nil {
+		return err
 	}
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf(motherDuckInsert, s.mdDatabase, s.mdDatabase)); err != nil {
 		return fmt.Errorf("failed to insert token usage into motherduck: %w", err)

@@ -41,8 +41,8 @@ func loadConfig() (*config, error) {
 	args := []string{
 		"--mode", "rpc",
 		"--extension", "/opt/rec/flint-pi.ts",
-		"--provider", "rec",
-		"--model", "flint",
+		"--provider", envOr("PI_PROVIDER", "rec"),
+		"--model", envOr("PI_MODEL", "flint"),
 	}
 	if v := os.Getenv("PI_ARGS"); v != "" {
 		args = strings.Fields(v)
@@ -52,8 +52,11 @@ func loadConfig() (*config, error) {
 	}
 
 	env := os.Environ()
-	env = append(env, "REC_PI_CONFIG="+envOr("REC_PI_CONFIG", `{"baseUrl":"http://127.0.0.1:11500/v1","contextWindow":262144,"maxTokens":32768}`))
-	env = append(env, "REC_API_KEY="+envOr("REC_API_KEY", ""))
+	env = setEnvDefault(env, "REC_PI_CONFIG", `{"baseUrl":"http://127.0.0.1:11500/v1","contextWindow":262144,"maxTokens":32768}`)
+	env = setEnvDefault(env, "REC_API_KEY", "")
+	env = setEnvDefault(env, "INKLING_PI_CONFIG", `{"baseUrl":"http://127.0.0.1:11500/v1","contextWindow":131072,"maxTokens":32768}`)
+	env = setEnvDefault(env, "INKLING_API_KEY", "local")
+	env = setEnvDefault(env, "INKLING_PROVIDER", "llama-server")
 
 	return &config{
 		host:          host,
@@ -77,6 +80,13 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func setEnvDefault(env []string, key, fallback string) []string {
+	if os.Getenv(key) != "" {
+		return env
+	}
+	return append(env, key+"="+fallback)
 }
 
 func envIntOr(key string, fallback int) int {

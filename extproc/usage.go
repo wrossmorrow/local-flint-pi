@@ -13,20 +13,22 @@ type PromptTokensDetails struct {
 }
 
 // Usage holds the token accounting reported by a model in its response, plus
-// the session attribution captured for the request via the x-session-id and
-// x-session-name headers.
+// the session and model/provider attribution captured for the request.
 type Usage struct {
 	SessionID           string              `json:"session_id,omitempty"`
 	SessionName         string              `json:"session_name,omitempty"`
+	Model               string              `json:"model,omitempty"`
+	Provider            string              `json:"provider,omitempty"`
 	PromptTokens        int64               `json:"prompt_tokens"`
 	CompletionTokens    int64               `json:"completion_tokens"`
 	TotalTokens         int64               `json:"total_tokens"`
 	PromptTokensDetails PromptTokensDetails `json:"prompt_tokens_details"`
 }
 
-// ResponseUsage pairs a chat completion response id with its token usage.
+// ResponseUsage pairs a chat completion response id and model with its token usage.
 type ResponseUsage struct {
 	ID    string `json:"id"`
+	Model string `json:"model"`
 	Usage Usage  `json:"usage"`
 }
 
@@ -34,12 +36,13 @@ type ResponseUsage struct {
 // response carrying an OpenAI-style "usage" field.
 type responseUsageEnvelope struct {
 	ID    string `json:"id"`
+	Model string `json:"model"`
 	Usage Usage  `json:"usage"`
 }
 
 // parseResponseUsage unmarshals a complete JSON chat completion response and
-// returns the response id together with its token usage. An error is returned
-// if the body is not valid JSON or carries no usage data.
+// returns the response id and model together with its token usage. An error is
+// returned if the body is not valid JSON or carries no usage data.
 func parseResponseUsage(body []byte) (*ResponseUsage, error) {
 	var env responseUsageEnvelope
 	if err := json.Unmarshal(body, &env); err != nil {
@@ -48,7 +51,7 @@ func parseResponseUsage(body []byte) (*ResponseUsage, error) {
 	if env.Usage.TotalTokens == 0 && env.Usage.CompletionTokens == 0 && env.Usage.PromptTokens == 0 {
 		return nil, errors.New("response body contained no usage data")
 	}
-	return &ResponseUsage{ID: env.ID, Usage: env.Usage}, nil
+	return &ResponseUsage{ID: env.ID, Model: env.Model, Usage: env.Usage}, nil
 }
 
 // ParseUsage extracts token usage from a complete JSON response body. An

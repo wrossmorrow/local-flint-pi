@@ -32,7 +32,15 @@ const (
 	responseUsageKey  = "responseUsage"
 	responseTimingKey = "responseTiming"
 	sessionKey        = "session"
+	modelKey          = "model"
 )
+
+// valueStore captures the per-stream state accessors from ep.RequestContext so
+// phase handlers can be unit-tested without constructing unexported SDK fields.
+type valueStore interface {
+	GetValue(name string) (any, error)
+	SetValue(name string, val any) error
+}
 
 // sessionContext holds the session attribution headers captured during the
 // request headers phase, retrieved during response finalization to stamp the
@@ -40,6 +48,13 @@ const (
 type sessionContext struct {
 	SessionID   string
 	SessionName string
+}
+
+// modelContext holds the provider and model attribution headers captured during
+// the request headers phase, retrieved during response finalization.
+type modelContext struct {
+	Provider string
+	Model    string
 }
 
 // tokenCounterRequestProcessor is the Envoy external processor implementation.
@@ -64,9 +79,16 @@ func (s *tokenCounterRequestProcessor) GetOptions() *ep.ProcessingOptions {
 }
 
 func (s *tokenCounterRequestProcessor) ProcessRequestHeaders(ctx *ep.RequestContext, headers ep.AllHeaders) error {
+	if err := s.handleRequestHeaders(ctx, ctx.Method, ctx.FullPath, ctx.Started, headers); err != nil {
+		return err
+	}
+	return ctx.ContinueRequest()
+}
+
+func (s *tokenCounterRequestProcessor) handleRequestHeaders(ctx valueStore, method, fullPath string, started time.Time, headers ep.AllHeaders) error {
 	s.logger.Info("request received",
-		slog.String("method", ctx.Method),
-		slog.String("path", ctx.FullPath),
+		slog.String("method", method),
+		slog.String("path", fullPath),
 	)
 
 	// log the session attribution headers (x-session-id / x-session-name) when
@@ -81,6 +103,15 @@ func (s *tokenCounterRequestProcessor) ProcessRequestHeaders(ctx *ep.RequestCont
 		)
 	}
 
+	provider, hasProvider := headers.Get("x-provider")
+	model, hasModel := headers.Get("x-model")
+	if hasProvider || hasModel {
+		s.logger.Info("model headers received",
+			slog.String("x-provider", provider),
+			slog.String("x-model", model),
+		)
+	}
+
 	// capture the session attribution headers on the per-stream context, so
 	// the finalized usage record can be stamped with the session that produced it
 	session := &sessionContext{
@@ -91,17 +122,24 @@ func (s *tokenCounterRequestProcessor) ProcessRequestHeaders(ctx *ep.RequestCont
 		return err
 	}
 
+	if err := ctx.SetValue(modelKey, &modelContext{
+		Provider: provider,
+		Model:    model,
+	}); err != nil {
+		return err
+	}
+
 	// stamp the request-received timestamp; the SDK seeds the request context
 	// with the stream start time at the beginning of the request headers phase,
 	// so prefer it and fall back to the current time if the phase was skipped
-	timing := &ResponseTiming{RequestReceivedAt: ctx.Started}
+	timing := &ResponseTiming{RequestReceivedAt: started}
 	if timing.RequestReceivedAt.IsZero() {
 		timing.RequestReceivedAt = time.Now()
 	}
 	if err := ctx.SetValue(responseTimingKey, timing); err != nil {
 		return err
 	}
-	return ctx.ContinueRequest()
+	return nil
 }
 
 func (s *tokenCounterRequestProcessor) ProcessRequestBody(ctx *ep.RequestContext, body []byte) error {
@@ -113,14 +151,25 @@ func (s *tokenCounterRequestProcessor) ProcessRequestTrailers(ctx *ep.RequestCon
 }
 
 func (s *tokenCounterRequestProcessor) ProcessResponseHeaders(ctx *ep.RequestContext, headers ep.AllHeaders) error {
-	// reset the response accumulators for this stream's response
-	if err := ctx.SetValue(responseBodyKey, ""); err != nil {
+	if err := s.handleResponseHeaders(ctx); err != nil {
 		return err
 	}
 	return ctx.ContinueRequest()
 }
 
+func (s *tokenCounterRequestProcessor) handleResponseHeaders(ctx valueStore) error {
+	// reset the response accumulators for this stream's response
+	return ctx.SetValue(responseBodyKey, "")
+}
+
 func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContext, body []byte) error {
+	if err := s.handleResponseBody(ctx, body, ctx.EndOfStream); err != nil {
+		return err
+	}
+	return ctx.ContinueRequest()
+}
+
+func (s *tokenCounterRequestProcessor) handleResponseBody(ctx valueStore, body []byte, endOfStream bool) error {
 	buf, err := ctx.GetValue(responseBodyKey)
 	if err != nil {
 		return err
@@ -149,19 +198,19 @@ func (s *tokenCounterRequestProcessor) ProcessResponseBody(ctx *ep.RequestContex
 		t.FirstResponseAt = time.Now()
 	}
 
-	if ctx.EndOfStream {
+	if endOfStream {
 		if err := s.finalizeResponse(ctx, acc, t); err != nil {
 			return err
 		}
 	}
 
-	return ctx.ContinueRequest()
+	return nil
 }
 
 // finalizeResponse finalizes the response timing once the response stream has
 // ended, parses the accumulated response body for token usage, and writes the
 // usage record. Failures to parse are logged and do not fail the stream.
-func (s *tokenCounterRequestProcessor) finalizeResponse(ctx *ep.RequestContext, body string, timing *ResponseTiming) error {
+func (s *tokenCounterRequestProcessor) finalizeResponse(ctx valueStore, body string, timing *ResponseTiming) error {
 	// the entire response body has now been received
 	timing.LastResponseAt = time.Now()
 
@@ -195,10 +244,34 @@ func (s *tokenCounterRequestProcessor) finalizeResponse(ctx *ep.RequestContext, 
 	usage.Usage.SessionID = sess.SessionID
 	usage.Usage.SessionName = sess.SessionName
 
+	provider := defaultProvider
+	model := ""
+	if mval, err := ctx.GetValue(modelKey); err == nil {
+		if mc, ok := mval.(*modelContext); ok && mc != nil {
+			if mc.Provider != "" {
+				provider = mc.Provider
+			}
+			if mc.Model != "" {
+				model = mc.Model
+			} else if usage.Model != "" {
+				model = usage.Model
+			}
+		}
+	} else if usage.Model != "" {
+		model = usage.Model
+	}
+	if model == "" || model == "flint" {
+		model = defaultModel
+	}
+	usage.Usage.Provider = provider
+	usage.Usage.Model = model
+
 	if err := s.store.Record(&usage.Usage, usage.ID, status, *timing, latency); err != nil {
 		s.logger.Warn("failed to write token usage to wal", slog.String("error", err.Error()))
 	}
 	s.logger.Info("token usage extracted",
+		slog.String("provider", usage.Usage.Provider),
+		slog.String("model", usage.Usage.Model),
 		slog.Int64("prompt_tokens", usage.Usage.PromptTokens),
 		slog.Int64("completion_tokens", usage.Usage.CompletionTokens),
 		slog.Int64("total_tokens", usage.Usage.TotalTokens),
@@ -329,7 +402,7 @@ func flushHandler(p *tokenCounterRequestProcessor) http.HandlerFunc {
 		if len(results) == 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "error": "no results to to checkpoint"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "error": "no results to checkpoint"})
 			return
 		}
 		checkpoint, ok := results[0]["timestamp"].(time.Time)

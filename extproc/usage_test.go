@@ -79,7 +79,8 @@ func TestParseUsageFromSSE(t *testing.T) {
 			name: "sse data event with usage",
 			body: "data: " + `{"id": "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11", "object": "chat.completion", "model": "flint", "usage": {"prompt_tokens": 3, "completion_tokens": 8, "total_tokens": 11, "prompt_tokens_details": {"cached_tokens": 0}}}` + "\n\n",
 			want: &ResponseUsage{
-				ID: "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11",
+				ID:    "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11",
+				Model: "flint",
 				Usage: Usage{
 					PromptTokens:        3,
 					CompletionTokens:    8,
@@ -93,12 +94,28 @@ func TestParseUsageFromSSE(t *testing.T) {
 			body: "data: " + `{"id": "chatcmpl-aaa", "object": "chat.completion", "model": "flint"}` + "\n\n" +
 				"data: " + `{"id": "chatcmpl-bbb", "object": "chat.completion", "model": "flint", "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7, "prompt_tokens_details": {"cached_tokens": 1}}}` + "\n\n",
 			want: &ResponseUsage{
-				ID: "chatcmpl-bbb",
+				ID:    "chatcmpl-bbb",
+				Model: "flint",
 				Usage: Usage{
 					PromptTokens:        5,
 					CompletionTokens:    2,
 					TotalTokens:         7,
 					PromptTokensDetails: PromptTokensDetails{CachedTokens: 1},
+				},
+			},
+		},
+		{
+			name: "sse llama-server/vllm stream with DONE trailer and omitted cached details",
+			body: "data: " + `{"id": "chatcmpl-ink-1", "object": "chat.completion.chunk", "model": "thinkingmachines/Inkling-2-Mini", "choices": [{"index": 0, "delta": {"content": "hi"}}]}` + "\n\n" +
+				"data: " + `{"id": "chatcmpl-ink-1", "object": "chat.completion.chunk", "model": "thinkingmachines/Inkling-2-Mini", "choices": [], "usage": {"prompt_tokens": 21, "completion_tokens": 9, "total_tokens": 30}}` + "\n\n" +
+				"data: [DONE]\n\n",
+			want: &ResponseUsage{
+				ID:    "chatcmpl-ink-1",
+				Model: "thinkingmachines/Inkling-2-Mini",
+				Usage: Usage{
+					PromptTokens:     21,
+					CompletionTokens: 9,
+					TotalTokens:      30,
 				},
 			},
 		},
@@ -130,6 +147,9 @@ func TestParseUsageFromSSE(t *testing.T) {
 			}
 			if got.ID != tt.want.ID {
 				t.Fatalf("ParseUsageFromSSE() ID = %q, want %q", got.ID, tt.want.ID)
+			}
+			if got.Model != tt.want.Model {
+				t.Fatalf("ParseUsageFromSSE() Model = %q, want %q", got.Model, tt.want.Model)
 			}
 			if got.Usage != tt.want.Usage {
 				t.Fatalf("ParseUsageFromSSE() = %+v, want %+v", got, tt.want)
