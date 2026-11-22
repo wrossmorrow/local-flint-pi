@@ -54,7 +54,7 @@ func loadConfig() (*config, error) {
 	env := os.Environ()
 	env = setEnvDefault(env, "REC_PI_CONFIG", `{"baseUrl":"http://127.0.0.1:11500/v1","contextWindow":262144,"maxTokens":32768}`)
 	env = setEnvDefault(env, "REC_API_KEY", "")
-	env = setEnvDefault(env, "INKLING_PI_CONFIG", `{"baseUrl":"http://127.0.0.1:11500/v1","contextWindow":262144,"maxTokens":32768}`)
+	env = setEnvDefault(env, "INKLING_PI_CONFIG", `{"baseUrl":"http://127.0.0.1:11500/v1","contextWindow":131072,"maxTokens":32768}`)
 	env = setEnvDefault(env, "INKLING_API_KEY", "local")
 	env = setEnvDefault(env, "INKLING_PROVIDER", "llama-server")
 

@@ -107,7 +107,7 @@ export default function (pi: ExtensionAPI) {
 
   const inklingProvider = process.env.INKLING_PROVIDER || 'llama-server';
   const inklingConfig = JSON.parse(
-    process.env.INKLING_PI_CONFIG || '{"baseUrl":"http://model-relay:11500/v1","contextWindow":262144,"maxTokens":32768}'
+    process.env.INKLING_PI_CONFIG || '{"baseUrl":"http://model-relay:11500/v1","contextWindow":131072,"maxTokens":32768}'
   );
   pi.registerProvider(inklingProvider, {
     name: 'Inkling local', api: 'openai-completions',
