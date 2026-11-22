@@ -9,7 +9,7 @@ services:
       - egress
 
   model-relay:
-    image: envoyproxy/envoy:${ENVOY_VERSION:-v1.35-latest}
+    image: envoyproxy/envoy:${ENVOY_VERSION:-v1.40-latest}
     command: envoy -c /etc/envoy/envoy.yaml --log-level ${ENVOY_LOG_LEVEL:-info}
     ports:
       - "127.0.0.1:9999:11500"
