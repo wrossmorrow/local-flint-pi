@@ -94,7 +94,11 @@ services:
       GITHUB_APP_USER: ${GITHUB_APP_USER:?}
       GITHUB_APP_USER_ID: ${GITHUB_APP_USER_ID:?}
       GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:?}
-      REC_API_KEY: ${REC_API_KEY:?}
+      REC_API_KEY: ${REC_API_KEY:-}
+      PI_PROVIDER: ${PI_PROVIDER:-rec}
+      PI_MODEL: ${PI_MODEL:-flint}
+      INKLING_PROVIDER: ${INKLING_PROVIDER:-llama-server}
+      INKLING_API_KEY: ${INKLING_API_KEY:-local}
       # the pi web interface serves on all interfaces inside the container so the
       # web-gateway (socat forwarder) can reach it over the sandbox network
       PI_WEB_HOST: 0.0.0.0
@@ -105,6 +109,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${WEB_AWS_SECRET_ACCESS_KEY:-}
       AWS_REGION: ${WEB_AWS_REGION:-us-east-1}
       REC_PI_CONFIG: '{"baseUrl":"http://model-relay:11500/v1","contextWindow":${FLINT_CONTEXT_WINDOW:-262144},"maxTokens":${FLINT_MAX_TOKENS:-32768}}'
+      INKLING_PI_CONFIG: '{"baseUrl":"http://model-relay:11500/v1","contextWindow":${INKLING_CONTEXT_WINDOW:-262144},"maxTokens":${INKLING_MAX_TOKENS:-32768}}'
       PI_CODING_AGENT_DIR: /home/node/.pi
       PI_SKIP_VERSION_CHECK: "1"
       # pass the sandbox egress proxy to the JVM (and thus the gradle wrapper / gradle

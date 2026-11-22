@@ -60,7 +60,7 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // Stamp the session onto every provider request via headers.
+  // Stamp the session and provider/model attribution onto every provider request via headers.
   pi.on("before_provider_headers", (event, ctx) => {
     const sessionId = buildSessionId() ?? ctx.sessionManager.getSessionId();
     event.headers["x-session-id"] = sessionId;
@@ -68,26 +68,58 @@ export default function (pi: ExtensionAPI) {
     if (name) {
       event.headers["x-session-name"] = name;
     }
+    const activeModel = (ctx as any).model;
+    if (!event.headers["x-provider"]) {
+      event.headers["x-provider"] = activeModel?.provider || process.env.PI_PROVIDER || "rec";
+    }
+    if (!event.headers["x-model"]) {
+      const resolvedModel = activeModel?.id || process.env.PI_MODEL || "flint";
+      event.headers["x-model"] = resolvedModel === "flint" ? "RecursiveSI/flint" : resolvedModel;
+    }
   });
 
   registerLogo(pi, JSON.parse(readFileSync(new URL('./logo-pixels.json', import.meta.url), 'utf8')));
-  const config = JSON.parse(process.env.REC_PI_CONFIG);
-  const key = process.env.REC_API_KEY;
-  if (!key) throw new Error('Rec API key is missing; use rec launch pi.');
-  const native = getApiProvider('openai-completions');
-  if (!native) throw new Error('Pi OpenAI-compatible transport is unavailable.');
-  pi.registerProvider('rec', {
-    name: 'Recursive local', api: 'rec-flint-completions',
-    baseUrl: config.baseUrl, apiKey: 'REC_API_KEY',
-    streamSimple: createRecStream(native, config, key),
+
+  const recKey = process.env.REC_API_KEY;
+  if (recKey) {
+    const recConfig = JSON.parse(
+      process.env.REC_PI_CONFIG || '{"baseUrl":"http://model-relay:11500/v1","contextWindow":262144,"maxTokens":32768}'
+    );
+    const native = getApiProvider('openai-completions');
+    if (!native) throw new Error('Pi OpenAI-compatible transport is unavailable.');
+    pi.registerProvider('rec', {
+      name: 'Recursive local', api: 'rec-flint-completions',
+      baseUrl: recConfig.baseUrl, apiKey: 'REC_API_KEY',
+      headers: { 'x-provider': 'rec', 'x-model': 'RecursiveSI/flint' },
+      streamSimple: createRecStream(native, recConfig, recKey),
+      models: [{
+        id: 'flint', name: 'Flint', reasoning: false, input: ['text'],
+        contextWindow: recConfig.contextWindow, maxTokens: recConfig.maxTokens,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        compat: {
+          supportsStore: false, supportsDeveloperRole: false,
+          supportsReasoningEffort: false, supportsStrictMode: false,
+          maxTokensField: 'max_tokens',
+        },
+      }],
+    });
+  }
+
+  const inklingProvider = process.env.INKLING_PROVIDER || 'llama-server';
+  const inklingConfig = JSON.parse(
+    process.env.INKLING_PI_CONFIG || '{"baseUrl":"http://model-relay:11500/v1","contextWindow":262144,"maxTokens":32768}'
+  );
+  pi.registerProvider(inklingProvider, {
+    name: 'Inkling local', api: 'openai-completions',
+    baseUrl: inklingConfig.baseUrl, apiKey: 'INKLING_API_KEY',
+    headers: { 'x-provider': inklingProvider, 'x-model': 'thinkingmachines/Inkling-2-Mini' },
     models: [{
-      id: 'flint', name: 'Flint', reasoning: false, input: ['text'],
-      contextWindow: config.contextWindow, maxTokens: config.maxTokens,
+      id: 'thinkingmachines/Inkling-2-Mini', name: 'Inkling 2 Mini', reasoning: true, input: ['text', 'image'],
+      contextWindow: inklingConfig.contextWindow, maxTokens: inklingConfig.maxTokens,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       compat: {
         supportsStore: false, supportsDeveloperRole: false,
-        supportsReasoningEffort: false, supportsStrictMode: false,
-        maxTokensField: 'max_tokens',
+        supportsStrictMode: false, maxTokensField: 'max_tokens',
       },
     }],
   });

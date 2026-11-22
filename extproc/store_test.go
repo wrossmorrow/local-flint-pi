@@ -26,7 +26,7 @@ func TestUsageStoreRecordAndClose(t *testing.T) {
 		LastResponseAt:    time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC),
 	}
 	latency := timing.Latency()
-	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11, SessionID: "01a17b93-cb59-77ce-9aaf-c9a29a959087", SessionName: "wrossmorrow/local-flint-pi"}, "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11", "ok", timing, latency); err != nil {
+	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11, SessionID: "01a17b93-cb59-77ce-9aaf-c9a29a959087", SessionName: "wrossmorrow/local-flint-pi", Model: "thinkingmachines/Inkling-2-Mini", Provider: "llama-server"}, "chatcmpl-68430e06-329a-47fa-ac4c-c6b74a830b11", "ok", timing, latency); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
 
@@ -45,6 +45,12 @@ func TestUsageStoreRecordAndClose(t *testing.T) {
 	}
 	if recs[0].SessionName != "wrossmorrow/local-flint-pi" {
 		t.Errorf("Records()[0].SessionName = %q, want wrossmorrow/local-flint-pi", recs[0].SessionName)
+	}
+	if recs[0].Model != "thinkingmachines/Inkling-2-Mini" {
+		t.Errorf("Records()[0].Model = %q, want thinkingmachines/Inkling-2-Mini", recs[0].Model)
+	}
+	if recs[0].Provider != "llama-server" {
+		t.Errorf("Records()[0].Provider = %q, want llama-server", recs[0].Provider)
 	}
 	if recs[0].Tokens.PromptTokens != 3 || recs[0].Tokens.CompletionTokens != 8 || recs[0].Tokens.TotalTokens != 11 {
 		t.Errorf("Records()[0].Tokens = %+v, want prompt=3 completion=8 total=11", recs[0].Tokens)
@@ -171,8 +177,36 @@ func TestUsageStoreMigratesMissingColumns(t *testing.T) {
 	if recs[0].SessionID != "" || recs[0].SessionName != "" {
 		t.Errorf("Records()[0].SessionID/SessionName = %q/%q, want empty for migrated row", recs[0].SessionID, recs[0].SessionName)
 	}
+	if recs[0].Model != defaultModel || recs[0].Provider != defaultProvider {
+		t.Errorf("Records()[0].Model/Provider = %q/%q, want %q/%q for migrated row", recs[0].Model, recs[0].Provider, defaultModel, defaultProvider)
+	}
 	if recs[0].Tokens.PromptTokens != 3 || recs[0].Tokens.CompletionTokens != 8 || recs[0].Tokens.TotalTokens != 11 {
 		t.Errorf("Records()[0].Tokens = %+v, want prompt=3 completion=8 total=11", recs[0].Tokens)
+	}
+}
+
+func TestUsageStoreDefaultsModelAndProvider(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewUsageStore(filepath.Join(t.TempDir(), "usage.duckdb"))
+	if err != nil {
+		t.Fatalf("NewUsageStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Record(&Usage{PromptTokens: 4, CompletionTokens: 6, TotalTokens: 10}, "chatcmpl-def-1", "ok", ResponseTiming{}, ResponseLatency{}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	recs, err := store.Records()
+	if err != nil {
+		t.Fatalf("Records() error = %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("Records() len = %d, want 1", len(recs))
+	}
+	if recs[0].Model != defaultModel || recs[0].Provider != defaultProvider {
+		t.Errorf("Records()[0].Model/Provider = %q/%q, want %q/%q", recs[0].Model, recs[0].Provider, defaultModel, defaultProvider)
 	}
 }
 
@@ -191,7 +225,7 @@ func TestUsageStoreQuery(t *testing.T) {
 		LastResponseAt:    time.Date(2026, 1, 1, 0, 0, 3, 0, time.UTC),
 	}
 	latency := timing.Latency()
-	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11, SessionID: "01a17b93-cb59-77ce-9aaf-c9a29a959087", SessionName: "wrossmorrow/local-flint-pi"}, "chatcmpl-query-1", "ok", timing, latency); err != nil {
+	if err := store.Record(&Usage{PromptTokens: 3, CompletionTokens: 8, TotalTokens: 11, SessionID: "01a17b93-cb59-77ce-9aaf-c9a29a959087", SessionName: "wrossmorrow/local-flint-pi", Model: "thinkingmachines/Inkling-2-Mini", Provider: "llama-server"}, "chatcmpl-query-1", "ok", timing, latency); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
 
@@ -210,5 +244,11 @@ func TestUsageStoreQuery(t *testing.T) {
 	}
 	if recs[0]["session_name"] != "wrossmorrow/local-flint-pi" {
 		t.Errorf("Query()[0][session_name] = %#v, want wrossmorrow/local-flint-pi", recs[0]["session_name"])
+	}
+	if recs[0]["model"] != "thinkingmachines/Inkling-2-Mini" {
+		t.Errorf("Query()[0][model] = %#v, want thinkingmachines/Inkling-2-Mini", recs[0]["model"])
+	}
+	if recs[0]["provider"] != "llama-server" {
+		t.Errorf("Query()[0][provider] = %#v, want llama-server", recs[0]["provider"])
 	}
 }

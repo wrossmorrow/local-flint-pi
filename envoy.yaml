@@ -30,8 +30,17 @@ static_resources:
                       routes:
                         - match:
                             prefix: "/"
+                            headers:
+                              - name: "x-model"
+                                string_match:
+                                  exact: "thinkingmachines/Inkling-2-Mini"
                           route:
-                            cluster: model
+                            cluster: model-inkling
+                            timeout: 0s
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: model-flint
                             timeout: 0s
                 http_filters:
                   - name: envoy.filters.http.ext_proc
@@ -74,7 +83,7 @@ static_resources:
                   socket_address:
                     address: extproc
                     port_value: 50051
-  - name: model
+  - name: model-flint
     connect_timeout: 0.250s
     type: LOGICAL_DNS
     lb_policy: LEAST_REQUEST
@@ -85,7 +94,7 @@ static_resources:
         explicit_http_config:
           http_protocol_options: {}
     load_assignment:
-      cluster_name: model
+      cluster_name: model-flint
       endpoints:
         - lb_endpoints:
             - endpoint:
@@ -94,3 +103,23 @@ static_resources:
                   socket_address:
                     address: host.docker.internal
                     port_value: 11500
+  - name: model-inkling
+    connect_timeout: 0.250s
+    type: LOGICAL_DNS
+    lb_policy: LEAST_REQUEST
+    dns_lookup_family: V4_ONLY
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config:
+          http_protocol_options: {}
+    load_assignment:
+      cluster_name: model-inkling
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                hostname: host.docker.internal
+                address:
+                  socket_address:
+                    address: host.docker.internal
+                    port_value: 11501

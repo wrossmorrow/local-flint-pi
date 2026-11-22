@@ -574,8 +574,8 @@ func sessionNameFromState(state map[string]any) string {
 }
 
 // modelConfigFromState reads the provider/model and context-window/token
-// settings out of a get_state snapshot (context window / max tokens also come
-// from REC_PI_CONFIG).
+// settings out of a get_state snapshot, falling back to the active provider's
+// config env var (INKLING_PI_CONFIG or REC_PI_CONFIG) for missing fields.
 func modelConfigFromState(state map[string]any) map[string]any {
 	mc := map[string]any{}
 	if state != nil {
@@ -589,21 +589,28 @@ func modelConfigFromState(state map[string]any) map[string]any {
 			if id, ok := v["id"].(string); ok {
 				mc["modelId"] = id
 			}
-		}
-	}
-	cfg := map[string]any{}
-	if raw := os.Getenv("REC_PI_CONFIG"); raw != "" {
-		var parsed map[string]any
-		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
 			for _, k := range []string{"contextWindow", "maxTokens", "baseUrl"} {
-				if v, ok := parsed[k]; ok {
-					cfg[k] = v
+				if val, ok := v[k]; ok {
+					mc[k] = val
 				}
 			}
 		}
 	}
-	for k, v := range cfg {
-		mc[k] = v
+	configEnv := "REC_PI_CONFIG"
+	if p, _ := mc["provider"].(string); p != "" && p != "rec" {
+		configEnv = "INKLING_PI_CONFIG"
+	}
+	if raw := os.Getenv(configEnv); raw != "" {
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			for _, k := range []string{"contextWindow", "maxTokens", "baseUrl"} {
+				if _, exists := mc[k]; !exists {
+					if v, ok := parsed[k]; ok {
+						mc[k] = v
+					}
+				}
+			}
+		}
 	}
 	return mc
 }

@@ -14,6 +14,35 @@ The agent base image now ships with Python (with [uv](https://docs.astral.sh/uv/
 
 Build a toolchain-specific image with `just build <toolchain>`, or directly via `docker build --target <toolchain> -t <image> .`.
 
+## Models & Configuration
+
+The sandbox supports switching between **Flint** (`rec` / `flint` in `pi`, recorded as `rec` / `RecursiveSI/flint` in DuckDB & MotherDuck, served via `rec serve` on host port `11500`) and **Inkling 2 Mini** (`llama-server` / `thinkingmachines/Inkling-2-Mini`, served separately via `llama-server` on host port `11501`). Requests pass through Envoy (`model-relay`), which routes `x-model: thinkingmachines/Inkling-2-Mini` to the Inkling upstream and falls back to Flint otherwise, while `extproc` records both `provider` and `model` in DuckDB / MotherDuck.
+
+Start a session for a model:
+
+```bash
+just up <owner/repo> [toolchain] [flint|inkling]
+```
+
+Manage the host Inkling server directly:
+
+- `just serve-inkling` — start `llama-server` in the background and wait for `/health`
+- `just stop-inkling` — stop `llama-server`
+- `just tail-inkling` — tail `~/.local/share/inkling/serve.log`
+
+Configuration environment variables (defaults match Flint):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PI_PROVIDER` / `PI_MODEL` | `rec` / `flint` | Initial provider & model passed to `pi` (`llama-server` / `thinkingmachines/Inkling-2-Mini` for Inkling) |
+| `INKLING_PROVIDER` | `llama-server` | Runtime provider name registered for Inkling (e.g. `llama-server`, `vllm`, `ollama`) |
+| `INKLING_PORT` | `11501` | Host port used by `just serve-inkling` |
+| `INKLING_HF_REPO` | `unsloth/Inkling-2-Mini-GGUF:UD-Q4_K_XL` | Hugging Face GGUF target passed to `llama-server -hf` |
+| `INKLING_CONTEXT_WINDOW` | `262144` | Context window advertised to `pi` and passed as `--ctx-size` |
+| `INKLING_MAX_TOKENS` | `32768` | Max completion tokens advertised to `pi` |
+| `INKLING_API_KEY` | `local` | Bearer key passed to the OpenAI-compatible Inkling upstream |
+| `INKLING_PI_CONFIG` | `{"baseUrl":"http://model-relay:11500/v1",...}` | Override full pi provider JSON config |
+
 ## Web interface
 
 The agent container runs the pi web interface (`web/`): a small Go service that spawns `pi --mode rpc` ([RPC docs](https://pi.dev/docs/latest/rpc)) and serves a browser UI over HTTP + server-sent events at `http://127.0.0.1:8787` (override with `PI_WEB_PORT`).

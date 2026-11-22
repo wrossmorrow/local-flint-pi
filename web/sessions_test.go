@@ -419,3 +419,42 @@ func TestSessionUploaderMetadataLifecycle(t *testing.T) {
 		t.Fatalf("metadata toolCalls = %d, want 2", meta.ToolCalls)
 	}
 }
+
+func TestModelConfigFromStateUsesProviderConfigAndModelFields(t *testing.T) {
+	t.Setenv("REC_PI_CONFIG", `{"baseUrl":"http://model-relay:11500/v1","contextWindow":262144,"maxTokens":32768}`)
+	t.Setenv("INKLING_PI_CONFIG", `{"baseUrl":"http://model-relay:11500/v1","contextWindow":131072,"maxTokens":16384}`)
+
+	for _, provider := range []string{"llama-server", "vllm"} {
+		mc := modelConfigFromState(map[string]any{
+			"model": map[string]any{
+				"provider": provider,
+				"id":       "thinkingmachines/Inkling-2-Mini",
+			},
+		})
+		if mc["provider"] != provider {
+			t.Fatalf("provider = %v, want %s", mc["provider"], provider)
+		}
+		if mc["modelId"] != "thinkingmachines/Inkling-2-Mini" {
+			t.Fatalf("modelId = %v, want thinkingmachines/Inkling-2-Mini", mc["modelId"])
+		}
+		if mc["contextWindow"] != float64(131072) {
+			t.Fatalf("contextWindow = %v, want 131072", mc["contextWindow"])
+		}
+		if mc["maxTokens"] != float64(16384) {
+			t.Fatalf("maxTokens = %v, want 16384", mc["maxTokens"])
+		}
+	}
+
+	// model fields present on state["model"] take precedence over env fallback
+	mcOverride := modelConfigFromState(map[string]any{
+		"model": map[string]any{
+			"provider":      "llama-server",
+			"id":            "thinkingmachines/Inkling-2-Mini",
+			"contextWindow": float64(262144),
+			"maxTokens":     float64(32768),
+		},
+	})
+	if mcOverride["contextWindow"] != float64(262144) || mcOverride["maxTokens"] != float64(32768) {
+		t.Fatalf("state model override failed: %+v", mcOverride)
+	}
+}

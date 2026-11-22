@@ -7,7 +7,12 @@ export function createRecStream(native, config, key) {
     return native.streamSimple({ ...model, api: 'openai-completions' }, context, {
       ...options,
       apiKey: key,
-      headers: { ...options.headers, Authorization: `Bearer ${key}` },
+      headers: {
+        ...options.headers,
+        Authorization: `Bearer ${key}`,
+        'x-provider': 'rec',
+        'x-model': 'RecursiveSI/flint',
+      },
       onPayload: async (payload, nativeModel) => {
         const edited = await options.onPayload?.(payload, nativeModel);
         const result = { ...(edited ?? payload), max_tokens: config.maxTokens };
